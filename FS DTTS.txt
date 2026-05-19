@@ -1,0 +1,3029 @@
+*&---------------------------------------------------------------------*
+*& Report Z_DTTS_PROXY_TEST_4
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT Z_DTTS_PROXY_TEST_4.
+*" =====================================================================
+*" LOCAL DATA DECLARATIONS
+*" =====================================================================
+
+  " Internal tables for custom tables
+  DATA: lt_header  TYPE TABLE OF zmm_sst_dtts_hdr, "DTTS header records collection
+        lt_items   TYPE TABLE OF zmm_sst_dtts_itm, "DTTS item records collection
+        lwa_header TYPE zmm_sst_dtts_hdr, "Single header work area
+        lwa_item   TYPE zmm_sst_dtts_itm. "Single item work area
+
+*" General work variables used across the main logic
+  DATA:
+    lwa_makt             TYPE makt,       "Material description (MAKT table)
+    lv_tran_id           TYPE ztran_id,   "Unique transaction ID: MBLNR+MJAHR+BWART
+    lv_item_no           TYPE numc4,      "Sequential item counter for DTTS items
+    lv_gtin              TYPE z_dgtin,    "Global Trade Item Number for the material
+    lv_from_gln          TYPE zmm_br_gln, "Sender GLN (Global Location Number)
+    lv_to_gln            TYPE zmm_br_gln, "Receiver GLN
+    lv_from_gln_type     TYPE char1,      "Type of sender: W=Warehouse, C=Clinic, P=Pharmacy
+    lv_to_gln_type       TYPE char1,      "Type of receiver: W=Warehouse, C=Clinic, P=Pharmacy
+    lv_stakeholder_valid TYPE abap_bool,  "Flag: is the movement type + GLN combo valid for DTTS?
+    lv_operation         TYPE char20,     "DTTS operation name e.g. DISPATCH, TRANSFER, CONSUME
+    lv_uom               TYPE meins,      "Unit of measure used for quantity reporting
+    lv_uomCVT            TYPE meins,      "UOM backup for conversion fallback (currently unused)
+    lv_qty               TYPE menge_d,    "Quantity to report to DTTS
+    lv_zznotreg_check    TYPE mara-zznotreg, "SFDA registration flag from MARA ('R' = registered)
+    lv_has_valid_item    TYPE abap_bool.  "Flag: at least one item passed SFDA registration check
+
+input selection screen with 
+matdoc,
+year 
+movement
+operation
+
+
+start of selection
+
+select data from table 
+      @AbapCatalog.sqlViewName: 'ZVIMMDTTSOP'
+@AbapCatalog.compiler.compareFilter: true
+@AbapCatalog.preserveKey: true
+@ClientHandling.algorithm: #SESSION_VARIABLE
+@EndUserText.label: 'DTTS Items with Header Operation'
+
+define view ZIMMDTTS_4
+  as select from ZIMM_DTTS_FY_HELPER as itm
+    left outer join zmm_sst_dtts_hdr as hdr
+      on  itm.mandt   = hdr.mandt
+      and itm.tran_id = hdr.tran_id
+{
+  key itm.mandt,
+  key itm.tran_id,
+  key itm.item_no,
+
+      itm.zeile,
+      itm.product,
+      itm.prod_name,
+      itm.prod_qty,
+      itm.prod_unit,
+      itm.gtin,
+      itm.batch,
+      itm.exp_date,
+      itm.notif_id,
+      itm.tr_response,
+      itm.mat_doc,
+      itm.mvt_type,
+      itm.sr_number,
+      itm.created_date,
+      itm.created_time,
+      itm.created_by,
+      itm.changed_date,
+      itm.changed_time,
+      itm.changed_by,
+      itm.prod_stat,
+      itm.trans_stat,
+      itm.fiscal_year,
+      itm.operation as item_operation,
+      hdr.operation as header_operation
+}
+
+based on the input selection 
+
+and select data from the header table 
+      
+      @EndUserText.label : 'DTTS integration - serial to batch - Header Table'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #ALLOWED
+define table zmm_sst_dtts_hdr {
+
+  key mandt    : mandt not null;
+  key tran_id  : ztran_id not null;
+  mat_doc      : mblnr;
+  doc_yr       : mjahr;
+  gjhr         : gjahr;
+  mvt_type     : bwart;
+  budat        : budat;
+  @EndUserText.label : 'Operation'
+  operation    : abap.char(20);
+  frm_gln      : zmm_sst_gln_src;
+  to_gln       : zmm_sst_gln_des;
+  auth_gln     : zmm_sst_gln_auth;
+  created_date : dats;
+  created_time : tims;
+  created_by   : xubname;
+  changed_date : dats;
+  changed_time : tims;
+  changed_by   : xubname;
+  @EndUserText.label : 'Status'
+  status       : abap.char(10);
+
+}
+
+now , 
+
+populate the alv output and display .
+
+Create a button to reprocess the item selected in the output . 
+
+once the item is selected . 
+
+sort the selected item using key matdoc mjahr and movement type . 
+
+remove the items that has status value success.
+
+create a new table with only the unique matdoc , mjahr and movemnet type selected. 
+
+loop in this unique table and 
+  
+get the header row from from the headder table with the key matdoc , mjahr and movemnet type and append it in table lt_header
+loop at the selected items table for the item lines and dppend it in lt_items
+  
+then run below code
+
+*" =============================================================
+*" LOAD API CONFIGURATION FROM ZMM_DTTS_API_CON
+*" Config table maps operation name to: proxy class, method,
+*" request/response structure names, and logical port.
+*" makes adding new operations config-driven .
+*" =============================================================
+
+              SELECT SINGLE * FROM zmm_dtts_api_con INTO @wa_zmm_dtts_api_con
+                WHERE api_name = @lv_operation.
+
+              IF sy-subrc = 0.
+
+                " Dynamically create request and response objects based on config
+                CREATE DATA request_ptr TYPE (wa_zmm_dtts_api_con-request_structure).
+                ASSIGN request_ptr->* TO FIELD-SYMBOL(<fs_request>).
+
+                CREATE DATA response_ptr TYPE (wa_zmm_dtts_api_con-response_structure).
+                ASSIGN response_ptr->* TO FIELD-SYMBOL(<fs_response>).
+
+*" =============================================================
+*" BUILD API REQUEST BASED ON OPERATION TYPE
+*" Each operation has its own FORM that populates the
+*" corresponding DTTS request structure with GLNs and products.
+*" =============================================================
+
+                CASE lv_operation.
+
+                  WHEN 'ACCEPT'.
+                    PERFORM accept_request USING lt_mseg lt_header lt_items
+                                                     CHANGING <fs_request>.
+
+                  WHEN 'RETURN'.
+                    PERFORM return_request USING lt_mseg lt_header lt_items
+                                                     CHANGING <fs_request>.
+
+                  WHEN 'DISPATCH'.
+                    PERFORM dispatch_request USING lt_mseg lt_header lt_items
+                                                       CHANGING <fs_request>.
+
+                  WHEN 'DISPATCH_CANCEL'.
+                    PERFORM dispatch_cancel_request USING lt_mseg lt_header lt_items
+                                                              CHANGING <fs_request>.
+
+                  WHEN 'TRANSFER'.
+                    PERFORM transfer_request USING lt_mseg lt_header lt_items
+                                                       CHANGING <fs_request>.
+
+                  WHEN 'TRANSFER_CANCEL'.
+                    PERFORM transfer_cancel_request USING lt_mseg lt_header lt_items
+                                                              CHANGING <fs_request>.
+
+                  WHEN 'CONSUME'.
+                    PERFORM consume_request USING lt_mseg lt_header lt_items
+                                                      CHANGING <fs_request>.
+
+                  WHEN 'CONSUME_CANCEL'.
+                    PERFORM consume_cancel_request USING lt_mseg lt_header lt_items
+                                                             CHANGING <fs_request>.
+
+                  WHEN 'DRUG_SALE'.
+                    PERFORM pharmacy_sale_request USING lt_mseg lt_header lt_items
+                                                            CHANGING <fs_request>.
+
+                  WHEN 'DRUG_SALE_CANCEL'.
+                    PERFORM pharmacy_sale_cancel_request USING lt_mseg lt_header lt_items
+                                                                   CHANGING <fs_request>.
+
+                  WHEN 'DEACTIVATE'.
+                    PERFORM deactivate_request USING lt_mseg lt_header lt_items
+                                                         CHANGING <fs_request>.
+
+                  WHEN 'DEACTIVATE_CANCEL'.
+                    PERFORM deactivate_cancel_request USING lt_mseg lt_header lt_items
+                                                                CHANGING <fs_request>.
+
+                  WHEN OTHERS.
+*                    MESSAGE |Operation { lv_operation } not configured for API call| TYPE 'I'.
+
+                ENDCASE.
+*" =============================================================
+*" CREATE PROXY AND CALL DTTS WEB SERVICE
+*" Logical port is passed dynamically from config table.
+*" =============================================================
+
+               " Build parameter table for proxy constructor (logical port binding)
+                CLEAR ptab.
+                CLEAR wa_ptab.
+                wa_ptab-name  = 'LOGICAL_PORT_NAME'.
+                wa_ptab-kind  = cl_abap_objectdescr=>exporting.
+                p_lport = wa_zmm_dtts_api_con-logical_port.
+                wa_ptab-value  = REF #( p_lport ).
+                INSERT wa_ptab INTO TABLE ptab.
+
+                TRY.
+                    " Instantiate the web service proxy class dynamically
+                    CREATE OBJECT lo_proxy TYPE (wa_zmm_dtts_api_con-proxy_class)
+                      PARAMETER-TABLE ptab.
+
+
+                    " Call the proxy method dynamically (method name from config table)
+                    CALL METHOD lo_proxy->(wa_zmm_dtts_api_con-method_name)
+                      EXPORTING
+                        input  = <fs_request>
+                      IMPORTING
+                        output = <fs_response>.
+
+*" ==========================================================
+*" PROCESS API RESPONSE AND UPDATE Z-TABLE RECORDS
+*" Each operation has its own FORM to parse the response and
+*" set item prod_stat (SUCCESS/ERROR) and notification IDs.
+*" ==========================================================
+
+                    CASE lv_operation.
+
+                      WHEN 'ACCEPT'.
+                        PERFORM accept_response USING <fs_response>
+                                                         CHANGING lt_header lt_items.
+
+                      WHEN 'RETURN'.
+                        PERFORM return_response USING <fs_response>
+                                                         CHANGING lt_header lt_items.
+
+                      WHEN 'DISPATCH'.
+                        PERFORM dispatch_response USING <fs_response>
+                                                           CHANGING lt_header lt_items.
+
+                      WHEN 'DISPATCH_CANCEL'.
+                        PERFORM dispatch_cancel_response USING <fs_response>
+                                                                  CHANGING lt_header lt_items.
+
+                      WHEN 'TRANSFER'.
+                        PERFORM transfer_response USING <fs_response>
+                                                           CHANGING lt_header lt_items.
+
+                      WHEN 'TRANSFER_CANCEL'.
+                        PERFORM transfer_cancel_response USING <fs_response>
+                                                                  CHANGING lt_header lt_items.
+
+                      WHEN 'CONSUME'.
+                        PERFORM consume_response USING <fs_response>
+                                                          CHANGING lt_header lt_items.
+
+                      WHEN 'CONSUME_CANCEL'.
+                        PERFORM consume_cancel_response USING <fs_response>
+                                                                 CHANGING lt_header lt_items.
+
+                      WHEN 'DRUG_SALE'.
+                        PERFORM pharmacy_sale_response USING <fs_response>
+                                                                CHANGING lt_header lt_items.
+
+                      WHEN 'DRUG_SALE_CANCEL'.
+                        PERFORM pharmacy_sale_cancel_response USING <fs_response>
+                                                                       CHANGING lt_header lt_items.
+
+                      WHEN 'DEACTIVATE'.
+                        PERFORM deactivate_response USING <fs_response>
+                                                             CHANGING lt_header lt_items.
+
+                      WHEN 'DEACTIVATE_CANCEL'.
+                        PERFORM deactivate_cancel_response USING <fs_response>
+                                                                    CHANGING lt_header lt_items.
+
+                      WHEN OTHERS.
+*                        MESSAGE |Response processing not configured for operation { lv_operation }| TYPE 'I'.
+
+                    ENDCASE.
+
+
+                   " Update the API response results back to Z-tables
+                    IF lt_header IS NOT INITIAL.
+                      MODIFY zmm_sst_dtts_hdr FROM TABLE lt_header.
+                    ENDIF.
+
+                    IF lt_items IS NOT INITIAL.
+                      MODIFY zmm_sst_dtts_itm FROM TABLE lt_items.
+                    ENDIF.
+*" ==========================================================
+*" ERROR HANDLING
+*" Three exception levels handled separately:
+*" - cx_ai_application_fault: DTTS business-level error (e.g. invalid GTIN)
+*" - cx_ai_system_fault: CPI/network/connectivity error
+*" - cx_root: Any other unexpected exception
+*" All handlers update item/header status to ERROR and persist to DB.
+*" ==========================================================
+
+                  CATCH cx_ai_application_fault INTO DATA(lx_app_fault).
+                    "  DTTS returned a business error (e.g. wrong state, duplicate notification)
+                    PERFORM handle_dtts_application_fault USING lx_app_fault
+                                                                 lv_operation
+                                                          CHANGING lt_items
+                                                                   lt_header.
+
+                  CATCH cx_ai_system_fault INTO DATA(lx_sys).
+                    " CPI or system-level connectivity/transport error
+                    PERFORM handle_api_error_multiple USING lx_sys
+                                                       CHANGING lt_items
+                                                               lt_header.
+
+
+                  CATCH cx_root INTO DATA(lx_root).
+                    " Catch-all for any unexpected runtime exception
+                    PERFORM handle_generic_error_multiple USING lx_root
+                                                           CHANGING lt_items
+                                                               lt_header.
+
+
+                ENDTRY.
+
+              ELSE.
+*                MESSAGE |API configuration not found for movement type { lwa_first_mseg-bwart }| TYPE 'E'.
+                RETURN.
+              ENDIF.
+*&---------------------------------------------------------------------*
+*& SECTION 2: REQUEST PREPARATION FORMS
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form  ACCEPT_REQUEST
+*&---------------------------------------------------------------------*
+FORM accept_request  USING p_mseg_table TYPE table
+                           p_header_table TYPE table
+                           p_items_table TYPE table
+                     CHANGING p_request TYPE zaccept_service_request.
+
+  DATA: lwa_request           TYPE zaccept_service_request,
+        lwa_product_line      TYPE zaccept_service_request_produ1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_from_gln           TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  " Get GLNs from header record
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_from_gln = <fs_header>-frm_gln.
+    lv_auth_gln = <fs_header>-to_gln.
+  ENDIF.
+
+  " Loop through ITEMS to build product list
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+
+    " Format data from item record (has GTIN, BATCH, EXP_DATE, QUANTITY)
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin     = lv_gtin_formatted.
+    lwa_product_line-quantity = lv_quantity_formatted.
+    lwa_product_line-bn       = lv_batch_formatted.
+    lwa_product_line-xd       = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-accept_batch_service_request-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-accept_batch_service_request-fromgln = lv_from_gln.
+  lwa_request-accept_batch_service_request-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  RETURN_REQUEST
+*&---------------------------------------------------------------------*
+FORM return_request  USING p_mseg_table TYPE table
+                           p_header_table TYPE table
+                           p_items_table TYPE table
+                     CHANGING p_request TYPE zreturn_batch_service_request.
+
+  DATA: lwa_request           TYPE zreturn_batch_service_request,
+        lwa_product_line      TYPE zreturn_batch_service_request3,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-to_gln.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin     = lv_gtin_formatted.
+    lwa_product_line-quantity = lv_quantity_formatted.
+    lwa_product_line-bn       = lv_batch_formatted.
+    lwa_product_line-xd       = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-return_batch_service-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-return_batch_service-togln = lv_to_gln.
+  lwa_request-return_batch_service-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DISPATCH_REQUEST
+*&---------------------------------------------------------------------*
+FORM dispatch_request  USING p_mseg_table TYPE table
+                             p_header_table TYPE table
+                             p_items_table TYPE table
+                       CHANGING p_request TYPE zdispatch_batch_service_reque3.
+
+  DATA: lwa_request           TYPE zdispatch_batch_service_reque3,
+        lwa_product_line      TYPE zdispatch_batch_service_reque1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-to_gln.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin     = lv_gtin_formatted.
+    lwa_product_line-quantity = lv_quantity_formatted.
+    lwa_product_line-bn       = lv_batch_formatted.
+    lwa_product_line-xd       = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-dispatch_batch_service-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-dispatch_batch_service-togln = lv_to_gln.
+  lwa_request-dispatch_batch_service-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DISPATCH_CANCEL_REQUEST
+*&---------------------------------------------------------------------*
+FORM dispatch_cancel_request  USING p_mseg_table TYPE table
+                                    p_header_table TYPE table
+                                    p_items_table TYPE table
+                              CHANGING p_request TYPE zdispatch_cancel_request.
+
+  DATA: lwa_request           TYPE zdispatch_cancel_request,
+        lwa_product_line      TYPE zdispatch_cancel_request_prod1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-frm_gln.
+    lv_auth_gln = <fs_header>-to_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin     = lv_gtin_formatted.
+    lwa_product_line-quantity = lv_quantity_formatted.
+    lwa_product_line-bn       = lv_batch_formatted.
+    lwa_product_line-xd       = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-dispatch_cancel-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-dispatch_cancel-togln = lv_to_gln.
+  lwa_request-dispatch_cancel-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  TRANSFER_REQUEST
+*&---------------------------------------------------------------------*
+FORM transfer_request  USING p_mseg_table TYPE table
+                             p_header_table TYPE table
+                             p_items_table TYPE table
+                       CHANGING p_request TYPE ztransfer_batch_service_reque3.
+
+  DATA: lwa_request           TYPE ztransfer_batch_service_reque3,
+        lwa_product_line      TYPE ztransfer_batch_service_reque2,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-to_gln.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin     = lv_gtin_formatted.
+    lwa_product_line-quantity = lv_quantity_formatted.
+    lwa_product_line-bn       = lv_batch_formatted.
+    lwa_product_line-xd       = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-transfer_batch_service-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-transfer_batch_service-togln = lv_to_gln.
+  lwa_request-transfer_batch_service-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  TRANSFER_CANCEL_REQUEST
+*&---------------------------------------------------------------------*
+FORM transfer_cancel_request  USING p_mseg_table TYPE table
+                                    p_header_table TYPE table
+                                    p_items_table TYPE table
+                              CHANGING p_request TYPE ztransfer_cancel_request.
+
+  DATA: lwa_request           TYPE ztransfer_cancel_request,
+        lwa_product_line      TYPE ztransfer_cancel_request_prod1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-to_gln.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                            <fs_item>-batch <fs_item>-exp_date
+      CHANGING lv_gtin_formatted lv_quantity_formatted
+               lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin     = lv_gtin_formatted.
+    lwa_product_line-quantity = lv_quantity_formatted.
+    lwa_product_line-bn       = lv_batch_formatted.
+    lwa_product_line-xd       = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-transfer_cancel-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-transfer_cancel-togln = lv_to_gln.
+  lwa_request-transfer_cancel-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  CONSUME_REQUEST
+*&---------------------------------------------------------------------*
+FORM consume_request  USING p_mseg_table TYPE table
+                            p_header_table TYPE table
+                            p_items_table TYPE table
+                      CHANGING p_request TYPE zconsume_service_request.
+
+  DATA: lwa_request           TYPE zconsume_service_request,
+        lwa_product_line      TYPE zconsume_service_request_prod1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                            <fs_item>-batch <fs_item>-exp_date
+      CHANGING lv_gtin_formatted lv_quantity_formatted
+               lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin = lv_gtin_formatted.
+    lwa_product_line-sn = <fs_item>-sr_number.
+    lwa_product_line-bn   = lv_batch_formatted.
+    lwa_product_line-xd   = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-consume_service-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-consume_service-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  CONSUME_CANCEL_REQUEST
+*&---------------------------------------------------------------------*
+FORM consume_cancel_request  USING p_mseg_table TYPE table
+                                   p_header_table TYPE table
+                                   p_items_table TYPE table
+                             CHANGING p_request TYPE zconsume_cancel_request.
+
+  DATA: lwa_request           TYPE zconsume_cancel_request,
+        lwa_product_line      TYPE zconsume_cancel_request_produ1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_auth_gln = <fs_header>-to_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin = lv_gtin_formatted.
+    lwa_product_line-sn = <fs_item>-sr_number.
+    lwa_product_line-bn   = lv_batch_formatted.
+    lwa_product_line-xd   = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-consume_cancel-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-consume_cancel-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  PHARMACY_SALE_REQUEST
+*&---------------------------------------------------------------------*
+FORM pharmacy_sale_request  USING p_mseg_table TYPE table
+                                  p_header_table TYPE table
+                                  p_items_table TYPE table
+                            CHANGING p_request TYPE zpharmacy_sale_request.
+
+  DATA: lwa_request           TYPE zpharmacy_sale_request,
+        lwa_product_line      TYPE zpharmacy_sale_request_produc1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln,
+        lv_prescription_date  TYPE string,
+        lv_year(4)            TYPE c,
+        lv_month(2)           TYPE c,
+        lv_day(2)             TYPE c.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-to_gln.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  " Format current date as YYYY-MM-DD for prescription date
+  lv_year  = sy-datum+0(4).
+  lv_month = sy-datum+4(2).
+  lv_day   = sy-datum+6(2).
+  lv_prescription_date = |{ lv_year }-{ lv_month }-{ lv_day }|.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin = lv_gtin_formatted.
+    lwa_product_line-sn = <fs_item>-sr_number.
+    lwa_product_line-bn   = lv_batch_formatted.
+    lwa_product_line-xd   = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-pharmacy_sale-productlist-product.
+
+  ENDLOOP.
+
+  " Check if toGLN = authGLN (invalid destination)
+  IF lv_to_gln = lv_auth_gln.
+    lwa_request-pharmacy_sale-togln = '0000000000000'.
+  ELSEIF lv_to_gln IS NOT INITIAL.
+    lwa_request-pharmacy_sale-togln = lv_to_gln.
+  ELSE.
+    lwa_request-pharmacy_sale-togln = '0000000000000'.
+  ENDIF.
+
+  lwa_request-pharmacy_sale-authgln = lv_auth_gln.
+  lwa_request-pharmacy_sale-doctorid = 'NA'.
+  lwa_request-pharmacy_sale-patientnationalid = 'NA'.
+  lwa_request-pharmacy_sale-prescriptionid = 'NA'.
+  lwa_request-pharmacy_sale-prescriptiondate = lv_prescription_date.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  PHARMACY_SALE_CANCEL_REQUEST
+*&---------------------------------------------------------------------*
+FORM pharmacy_sale_cancel_request USING p_mseg_table TYPE table
+                                        p_header_table TYPE table
+                                        p_items_table TYPE table
+                                  CHANGING p_request TYPE zpharmacy_sale_cancel_request3.
+
+  DATA: lwa_request           TYPE zpharmacy_sale_cancel_request3,
+        lwa_product_line      TYPE zpharmacy_sale_cancel_request2,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_to_gln             TYPE zmm_br_gln,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_to_gln = <fs_header>-to_gln.
+    lv_auth_gln = <fs_header>-to_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin = lv_gtin_formatted.
+    lwa_product_line-sn = <fs_item>-sr_number.
+    lwa_product_line-bn   = lv_batch_formatted.
+    lwa_product_line-xd   = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-pharmacy_sale_cancel-productlist-product.
+
+  ENDLOOP.
+
+  " Check if toGLN = authGLN (invalid destination)
+  IF lv_to_gln = lv_auth_gln.
+    lwa_request-pharmacy_sale_cancel-togln = '0000000000000'.
+  ELSEIF lv_to_gln IS NOT INITIAL.
+    lwa_request-pharmacy_sale_cancel-togln = lv_to_gln.
+  ELSE.
+    lwa_request-pharmacy_sale_cancel-togln = '0000000000000'.
+  ENDIF.
+
+  lwa_request-pharmacy_sale_cancel-authgln = lv_auth_gln.
+  lwa_request-pharmacy_sale_cancel-prescriptionid = 'NA'.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DEACTIVATE_REQUEST
+*&---------------------------------------------------------------------*
+FORM deactivate_request  USING p_mseg_table TYPE table
+                               p_header_table TYPE table
+                               p_items_table TYPE table
+                         CHANGING p_request TYPE zdeactivation_service_request3.
+
+  DATA: lwa_request           TYPE zdeactivation_service_request3,
+        lwa_product_line      TYPE zdeactivation_service_request1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_auth_gln           TYPE zmm_br_gln,
+        lv_grund              TYPE mb_grbew,
+        lv_grund_desc         TYPE grtxt.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm,
+                 <fs_mseg>   TYPE matdoc.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_auth_gln = <fs_header>-frm_gln.
+  ENDIF.
+
+  READ TABLE p_mseg_table ASSIGNING <fs_mseg> INDEX 1.
+  IF sy-subrc = 0 AND <fs_mseg>-grund IS NOT INITIAL.
+    lv_grund = <fs_mseg>-grund.
+
+    " Get description from T157E table for English language
+    SELECT SINGLE grtxt FROM t157e WHERE spras = 'E'
+        AND bwart = @<fs_mseg>-bwart AND grund = @lv_grund  INTO @lv_grund_desc.
+
+    IF sy-subrc <> 0.
+      " Fallback if description not found
+      lv_grund_desc = 'Deactivation'.
+    ENDIF.
+  ELSE.
+    " Default values if GRUND is empty
+    lv_grund = '30'.
+    lv_grund_desc = 'Damaged Product'.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin = lv_gtin_formatted.
+    lwa_product_line-sn = <fs_item>-sr_number.
+    lwa_product_line-bn   = lv_batch_formatted.
+    lwa_product_line-xd   = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-deactivation_request-productlist-product.
+
+  ENDLOOP.
+  SHIFT lv_grund LEFT DELETING LEADING '0'.
+  lwa_request-deactivation_request-authgln = lv_auth_gln.
+  lwa_request-deactivation_request-dr = lv_grund.
+  lwa_request-deactivation_request-explanation = lv_grund_desc.
+
+  p_request = lwa_request.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DEACTIVATE_CANCEL_REQUEST
+*&---------------------------------------------------------------------*
+FORM deactivate_cancel_request  USING p_mseg_table TYPE table
+                                      p_header_table TYPE table
+                                      p_items_table TYPE table
+                                CHANGING p_request TYPE zdeactivation_cancel_request.
+
+  DATA: lwa_request           TYPE zdeactivation_cancel_request,
+        lwa_product_line      TYPE zdeactivation_cancel_request_1,
+        lv_gtin_formatted     TYPE string,
+        lv_quantity_formatted TYPE string,
+        lv_batch_formatted    TYPE string,
+        lv_exp_date_formatted TYPE string,
+        lv_auth_gln           TYPE zmm_br_gln.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  READ TABLE p_header_table ASSIGNING <fs_header> INDEX 1.
+  IF sy-subrc = 0.
+    lv_auth_gln = <fs_header>-to_gln.
+  ENDIF.
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+**********SKip unregistered materials***************
+    IF <fs_item>-prod_stat EQ 'ERROR'.
+      CONTINUE.
+    ENDIF.
+    PERFORM format_data USING <fs_item>-gtin <fs_item>-prod_qty
+                              <fs_item>-batch <fs_item>-exp_date
+        CHANGING lv_gtin_formatted lv_quantity_formatted
+                 lv_batch_formatted lv_exp_date_formatted.
+
+    CLEAR lwa_product_line.
+    lwa_product_line-gtin = lv_gtin_formatted.
+    lwa_product_line-bn   = lv_batch_formatted.
+    lwa_product_line-sn = <fs_item>-sr_number.
+    lwa_product_line-xd   = lv_exp_date_formatted.
+
+    APPEND lwa_product_line TO lwa_request-deactivation_cancel-productlist-product.
+
+  ENDLOOP.
+
+  lwa_request-deactivation_cancel-authgln = lv_auth_gln.
+
+  p_request = lwa_request.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& SECTION 3: RESPONSE PROCESSING FORMS
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form  ACCEPT_RESPONSE
+*&---------------------------------------------------------------------*
+FORM accept_response  USING p_response TYPE zaccept_service_response
+                      CHANGING p_header_table TYPE table
+                               p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zaccept_service_response_prod1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-accept_batch_service_response-notificationid.
+
+  LOOP AT p_response-accept_batch_service_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin
+  AND <fs_item>-batch = lwa_product_resp-bn
+  AND <fs_item>-prod_qty = lwa_product_resp-quantity.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  RETURN_RESPONSE
+*&---------------------------------------------------------------------*
+FORM return_response USING p_response TYPE zreturn_batch_service_response
+                     CHANGING p_header_table TYPE table
+                              p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zreturn_batch_service_respons3,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-return_batch_service_response-notificationid.
+
+  LOOP AT p_response-return_batch_service_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin
+  AND <fs_item>-batch = lwa_product_resp-bn
+  AND <fs_item>-prod_qty = lwa_product_resp-quantity.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DISPATCH_RESPONSE
+*&---------------------------------------------------------------------*
+FORM dispatch_response  USING p_response TYPE zdispatch_batch_service_respo3
+                        CHANGING p_header_table TYPE table
+                                 p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zdispatch_batch_service_respo1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-dispatch_batch_service_respons-notificationid.
+
+  LOOP AT p_response-dispatch_batch_service_respons-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin
+   AND <fs_item>-batch = lwa_product_resp-bn
+   AND <fs_item>-prod_qty = lwa_product_resp-quantity.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DISPATCH_CANCEL_RESPONSE
+*&---------------------------------------------------------------------*
+FORM dispatch_cancel_response USING p_response TYPE zdispatch_cancel_response
+                              CHANGING p_header_table TYPE table
+                                       p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zdispatch_cancel_response_pro1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-dispatch_cancel_response-notificationid.
+
+  LOOP AT p_response-dispatch_cancel_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin
+   AND <fs_item>-batch = lwa_product_resp-bn
+   AND <fs_item>-prod_qty = lwa_product_resp-quantity.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  TRANSFER_RESPONSE
+*&---------------------------------------------------------------------*
+FORM transfer_response USING p_response TYPE ztransfer_batch_service_respo3
+                       CHANGING p_header_table TYPE table
+                                p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE ztransfer_batch_service_respo2,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-transfer_batch_service_respons-notificationid.
+
+  LOOP AT p_response-transfer_batch_service_respons-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin
+  AND <fs_item>-batch = lwa_product_resp-bn
+  AND <fs_item>-prod_qty = lwa_product_resp-quantity.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  TRANSFER_CANCEL_RESPONSE
+*&---------------------------------------------------------------------*
+FORM transfer_cancel_response USING p_response TYPE ztransfer_cancel_response
+                              CHANGING p_header_table TYPE table
+                                       p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE ztransfer_cancel_response_pro1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-transfer_cancel_response-notificationid.
+
+  LOOP AT p_response-transfer_cancel_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin
+   AND <fs_item>-batch = lwa_product_resp-bn
+   AND <fs_item>-prod_qty = lwa_product_resp-quantity.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  CONSUME_RESPONSE
+*&---------------------------------------------------------------------*
+FORM consume_response USING p_response TYPE zconsume_service_response
+                      CHANGING p_header_table TYPE table
+                               p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zconsume_service_response_pro1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-consume_service_response-notificationid.
+
+  LOOP AT p_response-consume_service_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = lwa_product_resp-bn AND <fs_item>-sr_number = lwa_product_resp-sn.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  CONSUME_CANCEL_RESPONSE
+*&---------------------------------------------------------------------*
+FORM consume_cancel_response USING p_response TYPE zconsume_cancel_response
+                             CHANGING p_header_table TYPE table
+                                      p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zconsume_cancel_response_prod1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-consume_cancel_service_respons-notificationid.
+
+  LOOP AT p_response-consume_cancel_service_respons-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = lwa_product_resp-bn AND <fs_item>-sr_number = lwa_product_resp-sn.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  PHARMACY_SALE_RESPONSE
+*&---------------------------------------------------------------------*
+FORM pharmacy_sale_response USING p_response TYPE zpharmacy_sale_response
+                            CHANGING p_header_table TYPE table
+                                     p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zpharmacy_sale_response_produ1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+  lv_notification_id = p_response-pharmacy_sale_service_response-notificationid.
+
+  LOOP AT p_response-pharmacy_sale_service_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = lwa_product_resp-bn AND <fs_item>-sr_number = lwa_product_resp-sn.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  PHARMACY_SALE_CANCEL_RESPONSE
+*&---------------------------------------------------------------------*
+FORM pharmacy_sale_cancel_response
+                                  USING p_response TYPE zpharmacy_sale_cancel_respons3
+                                  CHANGING p_header_table TYPE table
+                                           p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zpharmacy_sale_cancel_respons2,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+  lv_notification_id = p_response-pharmacy_sale_cancel_response-notificationid.
+
+  LOOP AT p_response-pharmacy_sale_cancel_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = lwa_product_resp-bn AND <fs_item>-sr_number = lwa_product_resp-sn.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DEACTIVATE_RESPONSE
+*&---------------------------------------------------------------------*
+FORM deactivate_response  USING p_response TYPE zdeactivation_service_respons3
+                          CHANGING p_header_table TYPE table
+                                   p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zdeactivation_service_respons1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-deactivation_response-notificationid.
+
+  LOOP AT p_response-deactivation_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = lwa_product_resp-bn AND <fs_item>-sr_number = lwa_product_resp-sn.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  DEACTIVATE_CANCEL_RESPONSE
+*&---------------------------------------------------------------------*
+FORM deactivate_cancel_response USING p_response TYPE zdeactivation_cancel_response3
+                              CHANGING p_header_table TYPE table
+                                       p_items_table TYPE table.
+
+  DATA: lwa_product_resp   TYPE zdeactivation_cancel_response1,
+        lv_error_code      TYPE char5,
+        lv_description     TYPE char255,
+        lv_notification_id TYPE string,
+        lv_all_success     TYPE abap_bool VALUE abap_true.
+  DATA: lv_item_gtin TYPE string, lv_resp_gtin TYPE string.
+  FIELD-SYMBOLS: <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_item>   TYPE zmm_sst_dtts_itm.
+
+
+  lv_notification_id = p_response-deactivation_cancel_response-notificationid.
+
+  LOOP AT p_response-deactivation_cancel_response-productlist-product
+       INTO lwa_product_resp.
+
+    LOOP AT p_items_table ASSIGNING <fs_item>.
+      lv_item_gtin = <fs_item>-gtin.
+      lv_resp_gtin = lwa_product_resp-gtin.
+      SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+      SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+      IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = lwa_product_resp-bn AND <fs_item>-sr_number = lwa_product_resp-sn.
+        <fs_item>-notif_id    = lv_notification_id.
+        <fs_item>-tr_response = lwa_product_resp-rc.
+        IF lwa_product_resp-rc = '00000'.
+          <fs_item>-prod_stat = 'SUCCESS'.
+        ELSE.
+          <fs_item>-prod_stat = 'ERROR'.
+          lv_all_success = abap_false.
+        ENDIF.
+
+        lv_error_code = lwa_product_resp-rc.
+        PERFORM get_error_description
+          USING lv_error_code
+          CHANGING lv_description.
+
+        <fs_item>-trans_stat  = lv_description.
+        <fs_item>-changed_date = sy-datum.
+        <fs_item>-changed_time = sy-uzeit.
+        <fs_item>-changed_by   = sy-uname.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    IF lv_all_success = abap_true.
+      <fs_header>-status = 'SUCCESS'.
+    ELSE.
+      <fs_header>-status = 'ERROR'.
+    ENDIF.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& SECTION 4: EXCEPTION HANDLERS & SUPPORTING PERFORMS
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form  HANDLE_DTTS_APPLICATION_FAULT
+*&---------------------------------------------------------------------*
+*  Generic handler using config table fault attribute
+FORM handle_dtts_application_fault USING p_exception TYPE REF TO cx_ai_application_fault
+                                         p_operation TYPE char20
+                                   CHANGING p_items_table TYPE table
+                                            p_header_table TYPE table.
+
+  DATA: lv_response_code TYPE string,
+        lv_message       TYPE string.
+
+  FIELD-SYMBOLS: <fs_item>   TYPE zmm_sst_dtts_itm,
+                 <fs_header> TYPE zmm_sst_dtts_hdr,
+                 <fs_field>  TYPE any.
+
+  " ========== Extract Fault Details (Direct Access - Flat Structure) ==========
+
+  TRY.
+      " Try to access RESPONSE_CODE directly
+      ASSIGN p_exception->('RESPONSE_CODE') TO <fs_field>.
+      IF sy-subrc = 0 AND <fs_field> IS ASSIGNED.
+        lv_response_code = <fs_field>.
+      ENDIF.
+
+      " Try to access MESSAGE directly
+      UNASSIGN <fs_field>.
+      ASSIGN p_exception->('MESSAGE') TO <fs_field>.
+      IF sy-subrc = 0 AND <fs_field> IS ASSIGNED.
+        lv_message = <fs_field>.
+      ENDIF.
+
+    CATCH cx_root.
+      " Continue to fallback
+  ENDTRY.
+
+  " ========== Fallback if extraction failed ==========
+
+  IF lv_response_code IS INITIAL.
+    lv_response_code = 'APP_FAULT'.
+  ENDIF.
+
+  IF lv_message IS INITIAL.
+    lv_message = p_exception->get_text( ).
+    IF lv_message IS INITIAL.
+      lv_message = |DTTS Application Fault - Operation: { p_operation }|.
+    ENDIF.
+  ENDIF.
+
+  " ========== Update ALL Items with Fault Details ==========
+
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+    <fs_item>-tr_response = lv_response_code.
+    <fs_item>-trans_stat  = lv_message.
+    <fs_item>-prod_stat   = 'ERROR'.
+    <fs_item>-notif_id    = ''.
+
+    " Update item timestamp
+    <fs_item>-changed_date = sy-datum.
+    <fs_item>-changed_time = sy-uzeit.
+    <fs_item>-changed_by   = sy-uname.
+  ENDLOOP.
+
+  " Update headers with timestamp and STATUS
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    <fs_header>-status = 'ERROR'.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+  " Save to database
+  IF p_items_table IS NOT INITIAL.
+    MODIFY zmm_sst_dtts_itm FROM TABLE p_items_table.
+  ENDIF.
+
+  IF p_header_table IS NOT INITIAL.
+    MODIFY zmm_sst_dtts_hdr FROM TABLE p_header_table.
+  ENDIF.
+
+ENDFORM.
+
+
+
+*&---------------------------------------------------------------------*
+*& Form  HANDLE_API_ERROR_MULTIPLE
+*&---------------------------------------------------------------------*
+FORM handle_api_error_multiple USING p_exception TYPE REF TO cx_ai_system_fault
+                               CHANGING p_items_table TYPE table
+                                           p_header_table TYPE table.
+
+  DATA: lv_sys_error  TYPE string,
+        lv_mpl_id     TYPE string,
+        lv_error_code TYPE string.
+
+  FIELD-SYMBOLS: <fs_item>   TYPE zmm_sst_dtts_itm,
+                 <fs_header> TYPE zmm_sst_dtts_hdr.
+
+  " Get error message
+  lv_sys_error = p_exception->get_text( ).
+
+  " Extract MPL ID if available
+  IF lv_sys_error CS 'MPL ID'.
+    FIND REGEX 'MPL ID ([A-Za-z0-9_]+)' IN lv_sys_error
+         SUBMATCHES lv_mpl_id.
+  ENDIF.
+
+  " Extract DTTS error code if available (e.g., 98765)
+  IF lv_sys_error CS '<FC>'.
+    FIND REGEX '<FC>(\d+)</FC>' IN lv_sys_error
+         SUBMATCHES lv_error_code.
+  ENDIF.
+
+  " Update ALL items with error code
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+    <fs_item>-tr_response = lv_error_code.
+    <fs_item>-prod_stat = 'ERROR'.
+    <fs_item>-trans_stat  = lv_sys_error.
+    " Update item timestamp
+    <fs_item>-changed_date = sy-datum.
+    <fs_item>-changed_time = sy-uzeit.
+    <fs_item>-changed_by   = sy-uname.
+  ENDLOOP.
+
+  "  Update headers
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    <fs_header>-status = 'ERROR'.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+  " Save  error records to database
+  MODIFY zmm_sst_dtts_itm FROM TABLE p_items_table.
+  MODIFY zmm_sst_dtts_hdr FROM TABLE p_header_table.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  HANDLE_GENERIC_ERROR_MULTIPLE
+*&---------------------------------------------------------------------*
+FORM handle_generic_error_multiple USING p_exception TYPE REF TO cx_root
+                                  CHANGING p_items_table TYPE table
+                                           p_header_table TYPE table.
+
+
+  DATA: lv_root_error TYPE string.
+
+  FIELD-SYMBOLS: <fs_item>   TYPE zmm_sst_dtts_itm,
+                 <fs_header> TYPE zmm_sst_dtts_hdr.
+
+  " Get error message
+  lv_root_error = p_exception->get_text( ).
+
+  " Update ALL items with generic error
+  LOOP AT p_items_table ASSIGNING <fs_item>.
+    <fs_item>-tr_response = 'ERROR'.
+    <fs_item>-prod_stat = 'ERROR'.
+
+    "  Update item timestamp
+    <fs_item>-changed_date = sy-datum.
+    <fs_item>-changed_time = sy-uzeit.
+    <fs_item>-changed_by   = sy-uname.
+  ENDLOOP.
+
+  " Update headers
+  LOOP AT p_header_table ASSIGNING <fs_header>.
+    <fs_header>-status = 'ERROR'.
+    <fs_header>-changed_date = sy-datum.
+    <fs_header>-changed_time = sy-uzeit.
+    <fs_header>-changed_by   = sy-uname.
+  ENDLOOP.
+
+  " Save ALL  records
+  MODIFY zmm_sst_dtts_itm FROM TABLE p_items_table.
+  MODIFY zmm_sst_dtts_hdr FROM TABLE p_header_table.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& HELPER FORMS
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form  GET_GTIN
+*&---------------------------------------------------------------------*
+FORM get_gtin USING p_matnr TYPE matnr
+                    p_meins TYPE meins
+              CHANGING p_gtin TYPE z_dgtin.
+
+  DATA: lwa_mean      TYPE mean,
+        lwa_marm      TYPE marm,
+        lv_base_meins TYPE meins.
+
+  CLEAR p_gtin.
+
+  " Try MEAN table first
+  SELECT SINGLE * FROM mean WHERE matnr = @p_matnr
+      AND meinh = @p_meins INTO @lwa_mean.
+
+  IF sy-subrc = 0 AND lwa_mean-ean11 IS NOT INITIAL.
+    p_gtin = lwa_mean-ean11.
+  ELSE.
+    " Try MARM table
+    SELECT SINGLE * FROM marm WHERE matnr = @p_matnr
+        AND meinh = @p_meins INTO @lwa_marm.
+
+    IF sy-subrc = 0 AND lwa_marm-ean11 IS NOT INITIAL.
+      p_gtin = lwa_marm-ean11.
+    ENDIF.
+  ENDIF.
+  IF p_gtin IS INITIAL.
+    CLEAR : lwa_mean,lwa_marm.
+    SELECT SINGLE meins FROM mara WHERE matnr = @p_matnr INTO @lv_base_meins.
+    IF sy-subrc = 0 AND lv_base_meins <> p_meins.
+
+      SELECT SINGLE * FROM mean WHERE matnr = @p_matnr
+AND meinh = @lv_base_meins INTO @lwa_mean.
+
+      IF sy-subrc = 0 AND lwa_mean-ean11 IS NOT INITIAL.
+        p_gtin = lwa_mean-ean11.
+      ELSE.
+        " Try MARM table
+        SELECT SINGLE * FROM marm WHERE matnr = @p_matnr
+            AND meinh = @lv_base_meins INTO @lwa_marm.
+
+        IF sy-subrc = 0 AND lwa_marm-ean11 IS NOT INITIAL.
+          p_gtin = lwa_marm-ean11.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+FORM get_serial_number USING   p_mat_doc   TYPE mblnr
+                                p_mjahr     TYPE mjahr
+                                p_matnr     TYPE matnr
+                                p_batch     TYPE charg_d
+                       CHANGING p_sr_number TYPE zmm_br_serial_no.
+
+
+
+  DATA: lwa_pick TYPE zmm_mat_pick.
+
+  CLEAR p_sr_number.
+
+  SELECT SINGLE sr_number
+    FROM zmm_mat_pick
+    WHERE mat_doc  = @p_mat_doc
+      AND mjahr    = @p_mjahr
+      AND material = @p_matnr
+      AND batch    = @p_batch
+    INTO @p_sr_number.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form  FORMAT_DATA
+*&---------------------------------------------------------------------*
+FORM format_data USING p_gtin_in TYPE any
+                       p_quantity_in TYPE any
+                       p_batch_in TYPE any
+                       p_exp_date_in TYPE any
+                 CHANGING p_gtin_out TYPE string
+                          p_quantity_out TYPE string
+                          p_batch_out TYPE string
+                          p_exp_date_out TYPE string.
+
+  DATA: lv_len      TYPE i,
+        lv_qty_int  TYPE string,
+        lv_qty_dec  TYPE string,
+        lv_year(4)  TYPE c,
+        lv_month(2) TYPE c,
+        lv_day(2)   TYPE c.
+
+  " Format GTIN
+  p_gtin_out = p_gtin_in.
+  CONDENSE p_gtin_out NO-GAPS.
+  lv_len = strlen( p_gtin_out ).
+  IF lv_len < 14.
+    p_gtin_out = |{ p_gtin_out WIDTH = 14 PAD = '0' ALIGN = RIGHT }|.
+  ENDIF.
+
+  " Format Quantity
+  p_quantity_out = p_quantity_in.
+  IF p_quantity_out CS '.'.
+    SPLIT p_quantity_out AT '.' INTO lv_qty_int lv_qty_dec.
+    p_quantity_out = lv_qty_int.
+  ENDIF.
+  p_quantity_out = |{ p_quantity_out ALPHA = OUT }|.
+  CONDENSE p_quantity_out NO-GAPS.
+
+  " Format Batch
+  p_batch_out = p_batch_in.
+  CONDENSE p_batch_out NO-GAPS.
+
+  " Format Expiry Date
+  CLEAR p_exp_date_out.
+  IF p_exp_date_in IS NOT INITIAL.
+    lv_year  = p_exp_date_in+0(4).
+    lv_month = p_exp_date_in+4(2).
+    lv_day   = p_exp_date_in+6(2).
+    p_exp_date_out = |{ lv_year }-{ lv_month }-{ lv_day }|.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  GET_ERROR_DESCRIPTION
+*&---------------------------------------------------------------------*
+FORM get_error_description USING p_error_code TYPE char5
+                           CHANGING p_description TYPE char255.
+
+  CLEAR p_description.
+
+  SELECT SINGLE description FROM zdtts_errorlist INTO @p_description
+    WHERE error_code = @p_error_code
+      AND language = 'en'.
+
+  IF sy-subrc <> 0.
+    p_description = |Error Code: { p_error_code }|.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form  GET_GLN_FOR_LINE_ITEM
+*&---------------------------------------------------------------------*
+FORM get_gln_for_line_item  USING p_mseg TYPE matdoc
+                            CHANGING p_from_gln TYPE zmm_br_gln
+                                     p_to_gln TYPE zmm_br_gln
+                                     p_from_gln_type TYPE char1
+                                     p_to_gln_type TYPE char1.
+
+  DATA: lwa_ekpo TYPE ekpo.
+
+  CLEAR: p_from_gln, p_to_gln, p_from_gln_type, p_to_gln_type.
+
+
+  SELECT SINGLE zzgln FROM zmm_migo_hdrcust
+    WHERE mblnr = @p_mseg-mblnr
+      AND mjahr = @p_mseg-mjahr
+    INTO @DATA(lv_custom_gln).
+
+  IF sy-subrc = 0 AND lv_custom_gln IS NOT INITIAL.
+
+    CASE p_mseg-bwart.
+
+      WHEN '101' OR '105' OR 'Z01' OR 'Z07'   "Accept
+        OR '351'                               "Dispatch/Transfer
+        OR '201'                               "Consume/Drug Sale
+        OR '551' OR 'Z05'                      "Deactivate
+        OR 'Z03'.                              "Transfer
+        "*" Forward movement: custom GLN goes to FROM GLN
+        p_from_gln = lv_custom_gln.
+        PERFORM get_gln_type_from_value USING p_from_gln
+                                        CHANGING p_from_gln_type.
+
+      WHEN '102' OR '106' OR 'Z02' OR 'Z08' OR '122'  "Return
+        OR '352'                                        "Dispatch/Transfer Cancel
+        OR '202'                                        "Consume/Drug Sale Cancel
+        OR '552' OR 'Z06'                               "Deactivate Cancel
+        OR 'Z04'.                                       "Transfer Cancel
+        "*" Reversal movement: custom GLN goes to TO GLN
+        p_to_gln = lv_custom_gln.
+        PERFORM get_gln_type_from_value USING p_to_gln
+                                        CHANGING p_to_gln_type.
+
+      WHEN OTHERS.
+        "*" Unknown movement type: default to FROM GLN (safe fallback)
+        p_from_gln = lv_custom_gln.
+        PERFORM get_gln_type_from_value USING p_from_gln
+                                        CHANGING p_from_gln_type.
+
+    ENDCASE.
+
+  ENDIF.
+
+  CASE p_mseg-bwart.
+
+*------------------------------------------------------------------*
+*  201 - Pharmacy Sale / Drug Sale
+*------------------------------------------------------------------*
+    WHEN '201'.
+
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  202 - Pharmacy Sale Cancel
+*------------------------------------------------------------------*
+    WHEN '202'.
+
+      IF p_to_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+      ENDIF.
+
+
+*------------------------------------------------------------------*
+*  Z03 - Transfer by Batch Number
+*------------------------------------------------------------------*
+    WHEN 'Z03'.
+
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+      IF p_mseg-kunnr IS NOT INITIAL.
+        PERFORM get_partner_gln USING p_mseg-kunnr
+                                      'C'
+                                CHANGING p_to_gln
+                                         p_to_gln_type.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL AND p_mseg-umwrk IS NOT INITIAL
+         AND p_mseg-umlgo IS NOT INITIAL.
+        IF p_mseg-umwrk <> p_mseg-werks OR p_mseg-umlgo <> p_mseg-lgort.
+          PERFORM get_warehouse_gln USING p_mseg-umwrk
+                                          p_mseg-umlgo
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  Z04 - Transfer Cancel
+*------------------------------------------------------------------*
+    WHEN 'Z04'.
+
+    IF p_from_gln IS INITIAL.
+        IF p_mseg-kunnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-kunnr
+                                        'C'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_from_gln IS INITIAL AND p_mseg-umwrk IS NOT INITIAL.
+        IF p_mseg-umwrk <> p_mseg-werks OR p_mseg-umlgo <> p_mseg-lgort.
+          PERFORM get_warehouse_gln USING p_mseg-umwrk
+                                          p_mseg-umlgo
+                                    CHANGING p_from_gln
+                                             p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+
+      IF p_to_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+      ENDIF.
+
+
+*------------------------------------------------------------------*
+*  351 - Dispatch by Batch Number
+*------------------------------------------------------------------*
+    WHEN '351'.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-ebeln IS NOT INITIAL AND p_mseg-ebelp IS NOT INITIAL.
+          SELECT SINGLE werks, lgort, reslo
+            FROM ekpo
+            WHERE ebeln = @p_mseg-ebeln
+              AND ebelp = @p_mseg-ebelp
+            INTO CORRESPONDING FIELDS OF @lwa_ekpo.
+
+          IF sy-subrc = 0 AND lwa_ekpo-reslo IS NOT INITIAL.
+            PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                            lwa_ekpo-reslo
+                                      CHANGING p_from_gln
+                                               p_from_gln_type.
+          ENDIF.
+        ENDIF.
+
+        IF p_from_gln IS INITIAL.
+          PERFORM get_warehouse_gln USING p_mseg-werks
+                                          p_mseg-lgort
+                                    CHANGING p_from_gln
+                                             p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_mseg-ebeln IS NOT INITIAL AND lwa_ekpo IS NOT INITIAL.
+        IF lwa_ekpo-lgort IS NOT INITIAL
+           AND lwa_ekpo-lgort <> lwa_ekpo-reslo.
+          PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                          lwa_ekpo-lgort
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL AND p_mseg-umwrk IS NOT INITIAL.
+        IF p_mseg-umwrk <> p_mseg-werks OR p_mseg-umlgo <> p_mseg-lgort.
+          PERFORM get_warehouse_gln USING p_mseg-umwrk
+                                          p_mseg-umlgo
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  352 - Dispatch Cancel
+*------------------------------------------------------------------*
+    WHEN '352'.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-ebeln IS NOT INITIAL AND p_mseg-ebelp IS NOT INITIAL.
+          SELECT SINGLE werks, lgort, reslo
+            FROM ekpo
+            WHERE ebeln = @p_mseg-ebeln
+              AND ebelp = @p_mseg-ebelp
+            INTO CORRESPONDING FIELDS OF @lwa_ekpo.
+
+          IF sy-subrc = 0 AND lwa_ekpo-lgort IS NOT INITIAL.
+            PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                            lwa_ekpo-lgort
+                                      CHANGING p_from_gln
+                                               p_from_gln_type.
+          ENDIF.
+        ENDIF.
+
+        IF p_from_gln IS INITIAL AND p_mseg-umwrk IS NOT INITIAL.
+          PERFORM get_warehouse_gln USING p_mseg-umwrk
+                                          p_mseg-umlgo
+                                    CHANGING p_from_gln
+                                             p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_mseg-ebeln IS NOT INITIAL AND lwa_ekpo-reslo IS NOT INITIAL.
+        IF lwa_ekpo-reslo <> lwa_ekpo-lgort.
+          PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                          lwa_ekpo-reslo
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL.
+        IF p_mseg-werks <> p_mseg-umwrk OR p_mseg-lgort <> p_mseg-umlgo.
+          PERFORM get_warehouse_gln USING p_mseg-werks
+                                          p_mseg-lgort
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  101 - Goods Receipt Accept
+*------------------------------------------------------------------*
+    WHEN '101'.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ENDIF.
+
+        IF p_from_gln IS INITIAL AND p_mseg-ebeln IS NOT INITIAL.
+          SELECT SINGLE werks, lgort, reslo
+            FROM ekpo
+            WHERE ebeln = @p_mseg-ebeln
+              AND ebelp = @p_mseg-ebelp
+            INTO CORRESPONDING FIELDS OF @lwa_ekpo.
+
+          IF sy-subrc = 0 AND lwa_ekpo-reslo IS NOT INITIAL
+             AND lwa_ekpo-reslo <> lwa_ekpo-lgort.
+            PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                            lwa_ekpo-reslo
+                                      CHANGING p_from_gln
+                                               p_from_gln_type.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      IF p_mseg-ebeln IS NOT INITIAL AND lwa_ekpo IS NOT INITIAL.
+        PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                        lwa_ekpo-lgort
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+      ELSE.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  102 - Goods Receipt Return
+*------------------------------------------------------------------*
+    WHEN '102'.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-ebeln IS NOT INITIAL AND p_mseg-ebelp IS NOT INITIAL.
+          SELECT SINGLE werks, lgort, reslo
+            FROM ekpo
+            WHERE ebeln = @p_mseg-ebeln
+              AND ebelp = @p_mseg-ebelp
+            INTO CORRESPONDING FIELDS OF @lwa_ekpo.
+
+          IF sy-subrc = 0.
+            PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                            lwa_ekpo-lgort
+                                      CHANGING p_from_gln
+                                               p_from_gln_type.
+          ENDIF.
+        ENDIF.
+
+        IF p_from_gln IS INITIAL.
+          PERFORM get_warehouse_gln USING p_mseg-werks
+                                          p_mseg-lgort
+                                    CHANGING p_from_gln
+                                             p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+        ELSEIF p_mseg-ebeln IS NOT INITIAL .
+          SELECT SINGLE lifnr FROM ekko WHERE  ebeln = @p_mseg-ebeln INTO @DATA(lv_lifnr).
+          IF sy-subrc = 0 AND lv_lifnr  IS NOT INITIAL.
+            PERFORM get_partner_gln USING lv_lifnr
+                                          'P'
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      IF p_to_gln IS INITIAL AND lwa_ekpo-reslo IS NOT INITIAL.
+        PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                       lwa_ekpo-reslo
+                                 CHANGING p_to_gln
+                                          p_to_gln_type.
+
+      ENDIF.
+*------------------------------------------------------------------*
+*  105 - Accept from Vendor
+*------------------------------------------------------------------*
+    WHEN '105'.
+      "*" No change - guard already exists
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      PERFORM get_warehouse_gln USING p_mseg-werks
+                                      p_mseg-lgort
+                                CHANGING p_to_gln
+                                         p_to_gln_type.
+
+*------------------------------------------------------------------*
+*  106 - Return to Vendor (Reversal of 105)
+*------------------------------------------------------------------*
+    WHEN '106'.
+
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  122 - Return to Vendor
+*------------------------------------------------------------------*
+    WHEN '122'.
+      "*" No change - from_gln guard already exists
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  Z01 - Accept from Customer
+*------------------------------------------------------------------*
+    WHEN 'Z01'.
+      "*" No change - guard already exists
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-kunnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-kunnr
+                                        'C'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      PERFORM get_warehouse_gln USING p_mseg-werks
+                                      p_mseg-lgort
+                                CHANGING p_to_gln
+                                         p_to_gln_type.
+
+*------------------------------------------------------------------*
+*  Z02 - Return to Customer
+*------------------------------------------------------------------*
+    WHEN 'Z02'.
+
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+
+      IF p_to_gln IS INITIAL.
+        IF p_mseg-kunnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-kunnr
+                                        'C'
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+
+*------------------------------------------------------------------*
+*  Z07 - Accept from Vendor
+*------------------------------------------------------------------*
+    WHEN 'Z07'.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      PERFORM get_warehouse_gln USING p_mseg-werks
+                                      p_mseg-lgort
+                                CHANGING p_to_gln
+                                         p_to_gln_type.
+
+*------------------------------------------------------------------*
+*  Z08 - Return to Vendor
+*------------------------------------------------------------------*
+    WHEN 'Z08'.
+
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+
+*------------------------------------------------------------------*
+*  551 - Deactivate Unit
+*------------------------------------------------------------------*
+    WHEN '551'.
+
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  552 - Deactivate Unit Cancel
+*------------------------------------------------------------------*
+    WHEN '552'.
+
+      IF p_to_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_to_gln
+                                           p_to_gln_type.
+      ENDIF.
+
+
+*------------------------------------------------------------------*
+*  Z05 - Deactivate Unit with Vendor
+*------------------------------------------------------------------*
+    WHEN 'Z05'.
+      "*" No change - guard already exists
+      IF p_from_gln IS INITIAL.
+        PERFORM get_warehouse_gln USING p_mseg-werks
+                                        p_mseg-lgort
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+      ENDIF.
+
+      IF p_mseg-lifnr IS NOT INITIAL.
+        PERFORM get_partner_gln USING p_mseg-lifnr
+                                      'P'
+                                CHANGING p_to_gln
+                                         p_to_gln_type.
+      ENDIF.
+
+*------------------------------------------------------------------*
+*  Z06 - Deactivate Unit Cancel
+*------------------------------------------------------------------*
+    WHEN 'Z06'.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      PERFORM get_warehouse_gln USING p_mseg-werks
+                                      p_mseg-lgort
+                                CHANGING p_to_gln
+                                         p_to_gln_type.
+
+*------------------------------------------------------------------*
+*  GENERIC FALLBACK
+*------------------------------------------------------------------*
+    WHEN OTHERS.
+
+      IF p_from_gln IS INITIAL.
+        IF p_mseg-kunnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-kunnr
+                                        'C'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ELSEIF p_mseg-lifnr IS NOT INITIAL.
+          PERFORM get_partner_gln USING p_mseg-lifnr
+                                        'P'
+                                  CHANGING p_from_gln
+                                           p_from_gln_type.
+        ELSEIF p_mseg-ebeln IS NOT INITIAL.
+          SELECT SINGLE werks, lgort, reslo
+            FROM ekpo
+            WHERE ebeln = @p_mseg-ebeln
+              AND ebelp = @p_mseg-ebelp
+            INTO CORRESPONDING FIELDS OF @lwa_ekpo.
+
+          IF sy-subrc = 0 AND lwa_ekpo-reslo IS NOT INITIAL.
+            PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                            lwa_ekpo-reslo
+                                      CHANGING p_from_gln
+                                               p_from_gln_type.
+          ENDIF.
+        ELSE.
+          PERFORM get_warehouse_gln USING p_mseg-werks
+                                          p_mseg-lgort
+                                    CHANGING p_from_gln
+                                             p_from_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_mseg-ebeln IS NOT INITIAL AND lwa_ekpo IS NOT INITIAL.
+        IF lwa_ekpo-lgort IS NOT INITIAL
+           AND ( lwa_ekpo-reslo IS INITIAL OR lwa_ekpo-lgort <> lwa_ekpo-reslo ).
+          PERFORM get_warehouse_gln USING lwa_ekpo-werks
+                                          lwa_ekpo-lgort
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+      IF p_to_gln IS INITIAL AND p_mseg-umwrk IS NOT INITIAL.
+        IF p_mseg-umwrk <> p_mseg-werks OR p_mseg-umlgo <> p_mseg-lgort.
+          PERFORM get_warehouse_gln USING p_mseg-umwrk
+                                          p_mseg-umlgo
+                                    CHANGING p_to_gln
+                                             p_to_gln_type.
+        ENDIF.
+      ENDIF.
+
+  ENDCASE.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  GET_PARTNER_GLN
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+FORM get_partner_gln USING    p_partner TYPE any
+                              p_type TYPE char1
+                     CHANGING p_gln TYPE zmm_br_gln
+                              p_gln_type TYPE char1.
+
+  CLEAR: p_gln, p_gln_type.
+
+  CHECK p_partner IS NOT INITIAL.
+
+  SELECT SINGLE gln
+    FROM zmm_gln_bp
+    WHERE bp = @p_partner
+      AND zact = 'X'
+    INTO @p_gln.
+
+  IF sy-subrc = 0 AND p_gln IS NOT INITIAL.
+    p_gln_type = p_type.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  GET_WAREHOUSE_GLN
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+FORM get_warehouse_gln USING    p_werks TYPE werks_d
+                                p_lgort TYPE lgort_d
+                       CHANGING p_gln TYPE zmm_br_gln
+                                p_gln_type TYPE char1.
+
+  CLEAR: p_gln, p_gln_type.
+
+  CHECK p_werks IS NOT INITIAL AND p_lgort IS NOT INITIAL.
+
+  SELECT SINGLE gln, gln_type
+    FROM zmmgln
+    WHERE werks = @p_werks
+      AND lgort = @p_lgort
+    INTO (@p_gln, @p_gln_type).
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  VALIDATE_AND_GET_OPERATION
+*&---------------------------------------------------------------------*
+FORM validate_and_get_operation USING p_movement_type TYPE bwart
+                                      p_from_gln_type TYPE char1
+                                      p_to_gln_type TYPE char1
+                                CHANGING p_valid TYPE abap_bool
+                                         p_operation TYPE char20.
+
+
+
+  " Initialize
+  p_valid = abap_false.
+  CLEAR p_operation.
+
+  CASE p_movement_type.
+
+      " ========== FORWARD MOVEMENTS ==========
+
+      " ACCEPT - Movement types: 101, 105, Z01, Z07
+    WHEN '101' OR '105' OR 'Z01' OR 'Z07'.
+      IF p_to_gln_type IS NOT INITIAL.
+        p_operation = 'ACCEPT'.
+        p_valid = abap_true.
+      ENDIF.
+
+      " DISPATCH (Wholesaler) or TRANSFER (Clinic/Pharmacy)
+      " Movement type: 351
+    WHEN '351'.
+      IF p_to_gln_type IS NOT INITIAL.
+        " Use FROM GLN type (warehouse source) to determine operation
+        IF p_from_gln_type = 'W'.
+          p_operation = 'DISPATCH'.
+          p_valid = abap_true.
+        ELSEIF p_from_gln_type = 'C' OR p_from_gln_type = 'P'.
+          p_operation = 'TRANSFER'.
+          p_valid = abap_true.
+        ELSE.
+          " Defaulting to TRANSFER if GLN type unknown
+          p_operation = 'TRANSFER'.
+          p_valid = abap_true.
+        ENDIF.
+      ENDIF.
+
+      " CONSUME (Clinic) or DRUG_SALE (Pharmacy)
+      " Movement type: 201
+    WHEN '201'.
+      IF p_from_gln_type = 'C'.
+        p_operation = 'CONSUME'.
+        p_valid = abap_true.
+      ELSEIF p_from_gln_type = 'P'.
+        p_operation = 'DRUG_SALE'.
+        p_valid = abap_true.
+      ELSE.
+        " Default to CONSUME if GLN type not determined
+        p_operation = 'CONSUME'.
+        p_valid = abap_true.
+      ENDIF.
+
+      " DEACTIVATE - Movement types: 551, Z05
+    WHEN '551' OR 'Z05'.
+      p_operation = 'DEACTIVATE'.
+      p_valid = abap_true.
+
+      " Dispatch - Movement type: Z03
+    WHEN 'Z03'.
+   IF p_from_gln_type = 'W'.
+        p_operation = 'DISPATCH'.
+        p_valid = abap_true.
+      ELSEIF p_from_gln_type = 'C'.
+        p_operation = 'TRANSFER'.
+        p_valid = abap_true.
+      ELSE.
+        p_operation = 'DISPATCH'.
+        p_valid = abap_true.
+      ENDIF.
+
+      " ========== REVERSAL MOVEMENTS ==========
+
+      " RETURN - Movement types: 102, 106, Z02, Z08, 122
+    WHEN '102' OR '106' OR 'Z02' OR 'Z08' OR '122'.
+      IF p_to_gln_type IS NOT INITIAL.
+        p_operation = 'RETURN'.
+        p_valid = abap_true.
+      ENDIF.
+
+      " DISPATCH_CANCEL (Wholesaler) or TRANSFER_CANCEL (Clinic/Pharmacy)
+      " Movement type: 352
+      "REVERSAL MOVEMENT:  check TO_GLN_TYPE!
+    WHEN '352'.
+      IF p_to_gln_type IS NOT INITIAL.
+        "  Use TO GLN type (warehouse destination) for reversal
+        IF p_to_gln_type = 'W'.
+          p_operation = 'DISPATCH_CANCEL'.
+          p_valid = abap_true.
+        ELSEIF p_to_gln_type = 'C' OR p_to_gln_type = 'P'.
+          p_operation = 'TRANSFER_CANCEL'.
+          p_valid = abap_true.
+        ELSE.
+          " Default to TRANSFER_CANCEL
+          p_operation = 'TRANSFER_CANCEL'.
+          p_valid = abap_true.
+        ENDIF.
+      ENDIF.
+
+      " CONSUME_CANCEL (Clinic) or DRUG_SALE_CANCEL (Pharmacy)
+      " Movement type: 202
+    WHEN '202'.
+      " Use TO GLN type (warehouse destination) for reversal
+      IF p_to_gln_type = 'C'.
+        p_operation = 'CONSUME_CANCEL'.
+        p_valid = abap_true.
+      ELSEIF p_to_gln_type = 'P'.
+        p_operation = 'DRUG_SALE_CANCEL'.
+        p_valid = abap_true.
+      ELSE.
+        " Defaulting to CONSUME_CANCEL if GLN type not determined
+        p_operation = 'CONSUME_CANCEL'.
+        p_valid = abap_true.
+      ENDIF.
+
+      " DEACTIVATE_CANCEL - Movement types: 552, Z06
+    WHEN '552' OR 'Z06'.
+      p_operation = 'DEACTIVATE_CANCEL'.
+      p_valid = abap_true.
+
+      " DISPATCH_CANCEL - Movement type: Z04
+    WHEN 'Z04'.
+       IF p_to_gln_type = 'W'.
+        p_operation = 'DISPATCH_CANCEL'.
+        p_valid = abap_true.
+      ELSEIF p_to_gln_type = 'C'.
+        p_operation = 'TRANSFER_CANCEL'.
+        p_valid = abap_true.
+      ELSE.
+        p_operation = 'DISPATCH_CANCEL'.
+        p_valid = abap_true.
+      ENDIF.
+
+      " ========== UNMAPPED MOVEMENT TYPES ==========
+    WHEN OTHERS.
+      p_valid = abap_false.
+      CLEAR p_operation.
+
+  ENDCASE.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form  GET_GLN_TYPE_FROM_VALUE
+*&---------------------------------------------------------------------*
+FORM get_gln_type_from_value USING p_gln TYPE zmm_br_gln
+                             CHANGING p_gln_type TYPE char1.
+
+  CLEAR p_gln_type.
+
+  CHECK p_gln IS NOT INITIAL.
+
+  " Try warehouse table first
+  SELECT SINGLE gln_type FROM zmmgln
+    WHERE gln = @p_gln
+    INTO @p_gln_type.
+
+  IF sy-subrc = 0.
+    " Found in warehouse table
+    RETURN.
+  ENDIF.
+
+  " Trying partner/vendor table
+  SELECT SINGLE gln FROM zmm_gln_BP
+    WHERE gln = @p_gln
+    INTO @DATA(lv_dummy).
+
+  IF sy-subrc = 0.
+    p_gln_type = 'P'.
+    RETURN.
+  ENDIF.
+
+  " Default to warehouse type
+  p_gln_type = 'W'.
+
+ENDFORM.
+
+then append a new line in the table ZMM_SST_DTTSIT2 if it does not exist . 
+
+else modify the status alone .
+  
+Also the new line will have the same data as in the old table ZMM_SST_DTTS_ITM except the PROD_STAT and the Transaction Status
+      
+The ALV output should be in a modifyable state where the user can enter the date directly in the fileds from alv and reprocess. 
+  
+
+Create the complete abap program in oops abap. and write it in a new text file called DTTS_REPROCESS_COCKPIT.txt
+
+
