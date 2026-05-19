@@ -1,0 +1,415 @@
+*&---------------------------------------------------------------------*
+*& Report Z_DTTS_REPROCESS_COCKPIT
+*&---------------------------------------------------------------------*
+*& Description: DTTS Reprocess Cockpit with Editable ALV
+*&---------------------------------------------------------------------*
+REPORT z_dtts_reprocess_cockpit.
+
+TABLES: mseg.
+
+*----------------------------------------------------------------------*
+* SELECTION SCREEN
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matdoc FOR mseg-mblnr,
+                  s_year   FOR mseg-mjahr,
+                  s_bwart  FOR mseg-bwart.
+  PARAMETERS: p_oper TYPE char20.
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* LOCAL CLASS DEFINITION
+*----------------------------------------------------------------------*
+CLASS lcl_dtts_cockpit DEFINITION.
+  PUBLIC SECTION.
+    TYPES: BEGIN OF ty_alv_data,
+             selkz            TYPE char1,
+             mandt            TYPE mandt,
+             tran_id          TYPE ztran_id,
+             item_no          TYPE numc4,
+             zeile            TYPE mblpo,
+             product          TYPE matnr,
+             prod_name        TYPE maktx,
+             prod_qty         TYPE menge_d,
+             prod_unit        TYPE meins,
+             gtin             TYPE z_dgtin,
+             batch            TYPE charg_d,
+             exp_date         TYPE vfdat,
+             notif_id         TYPE char50,
+             tr_response      TYPE string,
+             mat_doc          TYPE mblnr,
+             mvt_type         TYPE bwart,
+             sr_number        TYPE char50,
+             created_date     TYPE dats,
+             created_time     TYPE tims,
+             created_by       TYPE xubname,
+             changed_date     TYPE dats,
+             changed_time     TYPE tims,
+             changed_by       TYPE xubname,
+             prod_stat        TYPE char10,
+             trans_stat       TYPE char10,
+             fiscal_year      TYPE mjahr,
+             item_operation   TYPE char20,
+             header_operation TYPE char20,
+           END OF ty_alv_data.
+
+    DATA: gt_alv_data TYPE TABLE OF ty_alv_data.
+
+    DATA: go_alv      TYPE REF TO cl_gui_alv_grid,
+          go_container TYPE REF TO cl_gui_custom_container.
+
+    METHODS:
+      get_data,
+      display_alv,
+      handle_user_command FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm,
+      handle_toolbar FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive.
+
+  PRIVATE SECTION.
+    METHODS:
+      reprocess_selected_items.
+ENDCLASS.
+
+*----------------------------------------------------------------------*
+* LOCAL CLASS IMPLEMENTATION
+*----------------------------------------------------------------------*
+CLASS lcl_dtts_cockpit IMPLEMENTATION.
+
+  METHOD get_data.
+    " Retrieve data based on selection screen
+    " ZIMMDTTS_4 is a view mapping to ZIMM_DTTS_FY_HELPER left outer join zmm_sst_dtts_hdr
+    SELECT itm~mandt,
+           itm~tran_id,
+           itm~item_no,
+           itm~zeile,
+           itm~product,
+           itm~prod_name,
+           itm~prod_qty,
+           itm~prod_unit,
+           itm~gtin,
+           itm~batch,
+           itm~exp_date,
+           itm~notif_id,
+           itm~tr_response,
+           itm~mat_doc,
+           itm~mvt_type,
+           itm~sr_number,
+           itm~created_date,
+           itm~created_time,
+           itm~created_by,
+           itm~changed_date,
+           itm~changed_time,
+           itm~changed_by,
+           itm~prod_stat,
+           itm~trans_stat,
+           itm~fiscal_year,
+           itm~item_operation,
+           hdr~operation AS header_operation
+      FROM zimmdtts_4 AS itm
+      LEFT OUTER JOIN zmm_sst_dtts_hdr AS hdr ON itm~mandt = hdr~mandt AND itm~tran_id = hdr~tran_id
+      INTO CORRESPONDING FIELDS OF TABLE @gt_alv_data
+      WHERE itm~mat_doc IN @s_matdoc
+        AND itm~fiscal_year IN @s_year
+        AND itm~mvt_type IN @s_bwart
+        AND hdr~operation = @p_oper.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'No data found for the given selection criteria.' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD display_alv.
+    DATA: lt_fcat   TYPE lvc_t_fcat,
+          ls_layout TYPE lvc_s_layo.
+
+    IF go_container IS INITIAL.
+      " Need to create a screen 0100 for this ALV or use full screen CL_SALV_TABLE.
+      " For simplicity in full screen without screen painter, we use cl_gui_alv_grid with default full screen container.
+      CREATE OBJECT go_alv
+        EXPORTING
+          i_parent = cl_gui_container=>screen0.
+
+      " Prepare layout
+      ls_layout-sel_mode = 'A'.
+      ls_layout-box_fname = 'SELKZ'.
+
+      " Build Field Catalog dynamically or manually
+      CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+        EXPORTING
+          i_structure_name = 'ZIMM_DTTS_FY_HELPER' " Approximation, manual setup is better for custom fields
+        CHANGING
+          ct_fieldcat      = lt_fcat
+        EXCEPTIONS
+          OTHERS           = 1.
+
+      " Mark fields as editable (allow user to edit data in ALV directly)
+      LOOP AT lt_fcat ASSIGNING FIELD-SYMBOL(<fs_fcat>).
+        <fs_fcat>-edit = 'X'.
+      ENDLOOP.
+
+      " Set Handlers
+      SET HANDLER me->handle_toolbar FOR go_alv.
+      SET HANDLER me->handle_user_command FOR go_alv.
+
+      " Display ALV
+      go_alv->set_table_for_first_display(
+        EXPORTING
+          is_layout       = ls_layout
+        CHANGING
+          it_outtab       = gt_alv_data
+          it_fieldcatalog = lt_fcat ).
+    ELSE.
+      go_alv->refresh_table_display( ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD handle_toolbar.
+    DATA: ls_toolbar TYPE stb_button.
+    CLEAR ls_toolbar.
+    ls_toolbar-function = 'REPROCESS'.
+    ls_toolbar-icon = '@5C@'. " Reprocess Icon
+    ls_toolbar-quickinfo = 'Reprocess Selected Items'.
+    ls_toolbar-butn_type = 0.
+    ls_toolbar-text = 'Reprocess'.
+    APPEND ls_toolbar TO e_object->mt_toolbar.
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+    CASE e_ucomm.
+      WHEN 'REPROCESS'.
+        go_alv->check_changed_data( ).
+        me->reprocess_selected_items( ).
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD reprocess_selected_items.
+    DATA: lt_selected TYPE TABLE OF ty_alv_data,
+          lt_unique   TYPE TABLE OF ty_alv_data,
+          lt_header   TYPE TABLE OF zmm_sst_dtts_hdr,
+          lt_items    TYPE TABLE OF zmm_sst_dtts_itm,
+          lt_mseg     TYPE TABLE OF mseg,
+          wa_zmm_dtts_api_con TYPE zmm_dtts_api_con,
+          ptab        TYPE abap_parmbind_tab,
+          wa_ptab     LIKE LINE OF ptab,
+          p_lport     TYPE prx_logical_port_name,
+          lo_proxy    TYPE REF TO object.
+
+    " 1. Extract selected lines
+    LOOP AT gt_alv_data INTO DATA(ls_alv) WHERE selkz = 'X'.
+      APPEND ls_alv TO lt_selected.
+    ENDLOOP.
+
+    IF lt_selected IS INITIAL.
+      MESSAGE 'Please select at least one item to reprocess.' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    " 2. Remove items that have status SUCCESS
+    DELETE lt_selected WHERE prod_stat = 'SUCCESS'.
+
+    IF lt_selected IS INITIAL.
+      MESSAGE 'No eligible items to reprocess (all selected were SUCCESS).' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    " 3. Sort selected items using key matdoc, mjahr and movement type
+    SORT lt_selected BY mat_doc fiscal_year mvt_type.
+
+    " 4. Create a new table with only unique matdoc, mjahr and movement type
+    lt_unique = lt_selected.
+    DELETE ADJACENT DUPLICATES FROM lt_unique COMPARING mat_doc fiscal_year mvt_type.
+
+    " 5. Loop in this unique table
+    LOOP AT lt_unique INTO DATA(ls_unique).
+      CLEAR: lt_header, lt_items.
+
+      " Get the header row from header table and append it
+      SELECT * FROM zmm_sst_dtts_hdr
+        INTO TABLE @DATA(lt_hdr_tmp)
+        WHERE mat_doc = @ls_unique-mat_doc
+          AND doc_yr  = @ls_unique-fiscal_year
+          AND mvt_type = @ls_unique-mvt_type.
+      APPEND LINES OF lt_hdr_tmp TO lt_header.
+
+      DATA(lv_operation) = ls_unique-header_operation.
+
+      " Loop at the selected items table for the item lines and append to lt_items
+      LOOP AT lt_selected INTO DATA(ls_sel_item)
+           WHERE mat_doc = ls_unique-mat_doc
+             AND fiscal_year = ls_unique-fiscal_year
+             AND mvt_type = ls_unique-mvt_type.
+
+        DATA: ls_item TYPE zmm_sst_dtts_itm.
+        MOVE-CORRESPONDING ls_sel_item TO ls_item.
+        APPEND ls_item TO lt_items.
+      ENDLOOP.
+
+      " =============================================================
+      " LOAD API CONFIGURATION FROM ZMM_DTTS_API_CON
+      " =============================================================
+      SELECT SINGLE * FROM zmm_dtts_api_con INTO @wa_zmm_dtts_api_con
+        WHERE api_name = @lv_operation.
+
+      IF sy-subrc = 0.
+        " Dynamically create request and response objects based on config
+        CREATE DATA request_ptr TYPE (wa_zmm_dtts_api_con-request_structure).
+        ASSIGN request_ptr->* TO FIELD-SYMBOL(<fs_request>).
+
+        CREATE DATA response_ptr TYPE (wa_zmm_dtts_api_con-response_structure).
+        ASSIGN response_ptr->* TO FIELD-SYMBOL(<fs_response>).
+
+        " =============================================================
+        " BUILD API REQUEST BASED ON OPERATION TYPE
+        " =============================================================
+        CASE lv_operation.
+          WHEN 'ACCEPT'.
+            PERFORM accept_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'RETURN'.
+            PERFORM return_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'DISPATCH'.
+            PERFORM dispatch_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'DISPATCH_CANCEL'.
+            PERFORM dispatch_cancel_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'TRANSFER'.
+            PERFORM transfer_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'TRANSFER_CANCEL'.
+            PERFORM transfer_cancel_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'CONSUME'.
+            PERFORM consume_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'CONSUME_CANCEL'.
+            PERFORM consume_cancel_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'DRUG_SALE'.
+            PERFORM pharmacy_sale_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'DRUG_SALE_CANCEL'.
+            PERFORM pharmacy_sale_cancel_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'DEACTIVATE'.
+            PERFORM deactivate_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+          WHEN 'DEACTIVATE_CANCEL'.
+            PERFORM deactivate_cancel_request IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lt_mseg lt_header lt_items CHANGING <fs_request>.
+        ENDCASE.
+
+        " =============================================================
+        " CREATE PROXY AND CALL DTTS WEB SERVICE
+        " =============================================================
+        CLEAR ptab.
+        CLEAR wa_ptab.
+        wa_ptab-name  = 'LOGICAL_PORT_NAME'.
+        wa_ptab-kind  = cl_abap_objectdescr=>exporting.
+        p_lport = wa_zmm_dtts_api_con-logical_port.
+        wa_ptab-value  = REF #( p_lport ).
+        INSERT wa_ptab INTO TABLE ptab.
+
+        TRY.
+            CREATE OBJECT lo_proxy TYPE (wa_zmm_dtts_api_con-proxy_class)
+              PARAMETER-TABLE ptab.
+
+            CALL METHOD lo_proxy->(wa_zmm_dtts_api_con-method_name)
+              EXPORTING
+                input  = <fs_request>
+              IMPORTING
+                output = <fs_response>.
+
+            " ==========================================================
+            " PROCESS API RESPONSE AND UPDATE Z-TABLE RECORDS
+            " ==========================================================
+            CASE lv_operation.
+              WHEN 'ACCEPT'.
+                PERFORM accept_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'RETURN'.
+                PERFORM return_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'DISPATCH'.
+                PERFORM dispatch_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'DISPATCH_CANCEL'.
+                PERFORM dispatch_cancel_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'TRANSFER'.
+                PERFORM transfer_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'TRANSFER_CANCEL'.
+                PERFORM transfer_cancel_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'CONSUME'.
+                PERFORM consume_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'CONSUME_CANCEL'.
+                PERFORM consume_cancel_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'DRUG_SALE'.
+                PERFORM pharmacy_sale_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'DRUG_SALE_CANCEL'.
+                PERFORM pharmacy_sale_cancel_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'DEACTIVATE'.
+                PERFORM deactivate_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+              WHEN 'DEACTIVATE_CANCEL'.
+                PERFORM deactivate_cancel_response IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING <fs_response> CHANGING lt_header lt_items.
+            ENDCASE.
+
+            " Custom Table updates for reprocess
+            IF lt_header IS NOT INITIAL.
+              MODIFY zmm_sst_dtts_hdr FROM TABLE lt_header.
+            ENDIF.
+
+            " Instead of ZMM_SST_DTTS_ITM, we append a new line to ZMM_SST_DTTSIT2 if it does not exist,
+            " else modify the status alone. The new line will have same data as old table except PROD_STAT and Trans Status.
+            LOOP AT lt_items INTO DATA(ls_new_item).
+              DATA: ls_dttsit2 TYPE zmm_sst_dttsit2.
+
+              " Check if line exists
+              SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @ls_dttsit2
+                WHERE mandt   = @ls_new_item-mandt
+                  AND tran_id = @ls_new_item-tran_id
+                  AND item_no = @ls_new_item-item_no.
+
+              IF sy-subrc = 0.
+                " Record exists, just modify status
+                ls_dttsit2-prod_stat  = ls_new_item-prod_stat.
+                ls_dttsit2-trans_stat = ls_new_item-trans_stat.
+                MODIFY zmm_sst_dttsit2 FROM ls_dttsit2.
+              ELSE.
+                " Record doesn't exist, append new line using data from old table with new status
+                MOVE-CORRESPONDING ls_new_item TO ls_dttsit2.
+                " Set new PROD_STAT and TRANS_STAT handled by response FORM previously
+                INSERT zmm_sst_dttsit2 FROM ls_dttsit2.
+              ENDIF.
+            ENDLOOP.
+
+          CATCH cx_ai_application_fault INTO DATA(lx_app_fault).
+            PERFORM handle_dtts_application_fault IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lx_app_fault lv_operation CHANGING lt_items lt_header.
+          CATCH cx_ai_system_fault INTO DATA(lx_sys).
+            PERFORM handle_api_error_multiple IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lx_sys CHANGING lt_items lt_header.
+          CATCH cx_root INTO DATA(lx_root).
+            PERFORM handle_generic_error_multiple IN PROGRAM z_dtts_proxy_test_4 IF FOUND USING lx_root CHANGING lt_items lt_header.
+        ENDTRY.
+      ENDIF.
+    ENDLOOP.
+
+    MESSAGE 'Reprocessing Completed.' TYPE 'S'.
+  ENDMETHOD.
+
+
+ENDCLASS.
+
+*----------------------------------------------------------------------*
+* MAIN PROGRAM EXECUTION
+*----------------------------------------------------------------------*
+DATA: go_main TYPE REF TO lcl_dtts_cockpit.
+
+START-OF-SELECTION.
+  CREATE OBJECT go_main.
+  go_main->get_data( ).
+  CALL SCREEN 0100. " Assume a screen 0100 is created to host the ALV container
+
+*&---------------------------------------------------------------------*
+*& Module STATUS_0100 OUTPUT
+*&---------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'STANDARD'.
+  go_main->display_alv( ).
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module USER_COMMAND_0100 INPUT
+*&---------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE sy-ucomm.
+    WHEN 'BACK' OR 'EXIT' OR 'CANC'.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+ENDMODULE.
