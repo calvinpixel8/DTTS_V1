@@ -1,3 +1,4 @@
+```abap
 @Metadata.layer: #CORE
 annotate view ZC_MM_DTTS_COCKPIT with
 {
@@ -43,3 +44,4 @@ annotate view ZC_MM_DTTS_COCKPIT with
   @UI.identification: [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' }]
   mat_doc; " Placeholder for action buttons
 }
+```

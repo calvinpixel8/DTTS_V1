@@ -1,3 +1,4 @@
+```abap
 projection;
 strict ( 2 );
 use draft;
@@ -14,3 +15,4 @@ define behavior for ZC_MM_DTTS_COCKPIT alias Item
   use action Resume;
   use action Prepare;
 }
+```

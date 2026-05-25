@@ -1,3 +1,4 @@
+```abap
 @EndUserText.label: 'DTTS Cockpit Projection View'
 @AccessControl.authorizationCheck: #NOT_REQUIRED
 @Metadata.allowExtensions: true
@@ -34,3 +35,4 @@ define root view entity ZC_MM_DTTS_COCKPIT
       frm_gln,
       to_gln
 }
+```

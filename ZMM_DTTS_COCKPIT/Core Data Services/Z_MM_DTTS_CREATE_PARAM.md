@@ -1,3 +1,4 @@
+```abap
 @EndUserText.label: 'DTTS Create Parameters'
 define abstract entity Z_MM_DTTS_CREATE_PARAM
 {
@@ -16,3 +17,4 @@ define abstract entity Z_MM_DTTS_CREATE_PARAM
   @EndUserText.label: 'Shelf Expiry'
   exp_date     : zmm_sst_expiry_date;
 }
+```

@@ -1,3 +1,4 @@
+```abap
 CLASS zcl_mm_dtts_cockpit_bdef DEFINITION PUBLIC ABSTRACT FINAL FOR BEHAVIOR OF zr_mm_dtts_cockpit.
 ENDCLASS.
 CLASS zcl_mm_dtts_cockpit_bdef IMPLEMENTATION.
@@ -352,3 +353,4 @@ CLASS lsc_ZR_MM_DTTS_COCKPIT IMPLEMENTATION.
   METHOD cleanup_finalize.
   ENDMETHOD.
 ENDCLASS.
+```

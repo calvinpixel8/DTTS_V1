@@ -1,3 +1,4 @@
+```abap
 @AccessControl.authorizationCheck: #NOT_REQUIRED
 @EndUserText.label: 'DTTS Cockpit Root View'
 define root view entity ZR_MM_DTTS_COCKPIT
@@ -37,3 +38,4 @@ define root view entity ZR_MM_DTTS_COCKPIT
       _Header.frm_gln   as frm_gln,
       _Header.to_gln    as to_gln
 }
+```
