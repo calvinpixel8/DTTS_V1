@@ -6,6 +6,7 @@ with draft;
 define behavior for ZR_MM_DTTS_COCKPIT alias Item
 draft table zmm_sst_dttsit2d
 lock master total etag changed_time
+etag master changed_time
 authorization master ( instance )
 {
   create;
