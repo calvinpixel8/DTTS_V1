@@ -5,15 +5,15 @@ with draft;
 
 define behavior for ZR_MM_DTTS_COCKPIT alias Item
 draft table zmm_sst_dttsit2d
-lock master total etag changed_time
-etag master changed_time
+lock master total etag changedtime
+etag master changedtime
 authorization master ( instance )
 {
   create;
   update ( features : instance ); // Only non-success can be updated
   delete;
 
-  field ( readonly ) mandt, tran_id, item_no, prod_stat, trans_stat, notif_id;
+  field ( readonly ) mandt, tranid, itemno, prodstat, transstat, notifid;
 
   // Actions
   action ( features : instance ) reprocess result [1] $self;
@@ -30,29 +30,29 @@ authorization master ( instance )
   mapping for zmm_sst_dtts_itm
   {
     mandt = mandt;
-    tran_id = tran_id;
-    item_no = item_no;
+    tranid = tran_id;
+    itemno = item_no;
     zeile = zeile;
     product = product;
-    prod_name = prod_name;
-    prod_qty = prod_qty;
-    prod_unit = prod_unit;
+    prodname = prod_name;
+    prodqty = prod_qty;
+    produnit = prod_unit;
     gtin = gtin;
     batch = batch;
-    exp_date = exp_date;
-    notif_id = notif_id;
-    tr_response = tr_response;
-    mat_doc = mat_doc;
-    mvt_type = mvt_type;
-    sr_number = sr_number;
-    created_date = created_date;
-    created_time = created_time;
-    created_by = created_by;
-    changed_date = changed_date;
-    changed_time = changed_time;
-    changed_by = changed_by;
-    prod_stat = prod_stat;
-    trans_stat = trans_stat;
+    expdate = exp_date;
+    notifid = notif_id;
+    trresponse = tr_response;
+    matdoc = mat_doc;
+    mvttype = mvt_type;
+    srnumber = sr_number;
+    createddate = created_date;
+    createdtime = created_time;
+    createdby = created_by;
+    changeddate = changed_date;
+    changedtime = changed_time;
+    changedby = changed_by;
+    prodstat = prod_stat;
+    transstat = trans_stat;
   }
 }
 ```

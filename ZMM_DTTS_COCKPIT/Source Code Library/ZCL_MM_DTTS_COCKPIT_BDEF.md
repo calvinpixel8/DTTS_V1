@@ -58,13 +58,13 @@ CLASS lhc_Item IMPLEMENTATION.
     " Only allow update/edit for records that are not SUCCESS
     READ ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      FIELDS ( prod_stat ) WITH CORRESPONDING #( keys )
+      FIELDS ( prodstat ) WITH CORRESPONDING #( keys )
       RESULT DATA(lt_items).
 
     result = VALUE #( FOR ls_item IN lt_items
                       ( %tky = ls_item-%tky
-                        %update = COND #( WHEN ls_item-prod_stat = 'SUCCESS' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
-                        %action-reprocess = COND #( WHEN ls_item-prod_stat = 'SUCCESS' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
+                        %update = COND #( WHEN ls_item-prodstat = 'SUCCESS' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
+                        %action-reprocess = COND #( WHEN ls_item-prodstat = 'SUCCESS' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
                       ) ).
   ENDMETHOD.
 
@@ -72,12 +72,11 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD create.
-    " Interaction phase: Update Transactional Buffer (via global data class if using unmanaged without early numbering)
-    " For true unmanaged, buffer operations happen here, save is in saver.
+    " Unmanaged create logic (Buffer)
   ENDMETHOD.
 
   METHOD update.
-    " Interaction phase: Buffer updates
+    " Unmanaged update logic (Buffer)
   ENDMETHOD.
 
   METHOD delete.
@@ -90,17 +89,16 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD reprocess.
-    " In unmanaged RAP, Reprocess logic updates the buffer, DB changes happen in Saver
-    " 1. Group by TRAN_ID
+    " 1. Group by TRANID
     TYPES: BEGIN OF ty_tran_id,
-             tran_id TYPE ztran_id,
+             tranid TYPE ztran_id,
            END OF ty_tran_id.
     DATA: lt_tran_ids TYPE TABLE OF ty_tran_id.
 
     LOOP AT keys INTO DATA(ls_key).
-      APPEND VALUE #( tran_id = ls_key-tran_id ) TO lt_tran_ids.
+      APPEND VALUE #( tranid = ls_key-tranid ) TO lt_tran_ids.
     ENDLOOP.
-    SORT lt_tran_ids BY tran_id.
+    SORT lt_tran_ids BY tranid.
     DELETE ADJACENT DUPLICATES FROM lt_tran_ids.
 
     DATA: lt_header  TYPE TABLE OF zmm_sst_dtts_hdr,
@@ -122,11 +120,10 @@ CLASS lhc_Item IMPLEMENTATION.
       CLEAR: lt_header, lt_items.
 
       SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
-        WHERE tran_id = @ls_tran_id-tran_id.
+        WHERE tran_id = @ls_tran_id-tranid.
 
-      " Read from DB for base, but should technically read from buffer
       SELECT * FROM zmm_sst_dtts_itm INTO TABLE @lt_items
-        WHERE tran_id = @ls_tran_id-tran_id
+        WHERE tran_id = @ls_tran_id-tranid
           AND prod_stat <> 'SUCCESS'. " ONLY Non-Success
 
       IF lt_header IS NOT INITIAL AND lt_items IS NOT INITIAL.
@@ -265,15 +262,15 @@ CLASS lhc_Item IMPLEMENTATION.
               LOOP AT lt_items INTO DATA(ls_mod_item).
                 MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
                   ENTITY Item
-                  UPDATE FIELDS ( prod_stat trans_stat notif_id tr_response changed_date changed_time changed_by )
-                  WITH VALUE #( ( %tky = VALUE #( tran_id = ls_mod_item-tran_id item_no = ls_mod_item-item_no )
-                                  prod_stat = ls_mod_item-prod_stat
-                                  trans_stat = ls_mod_item-trans_stat
-                                  notif_id = ls_mod_item-notif_id
-                                  tr_response = ls_mod_item-tr_response
-                                  changed_date = ls_mod_item-changed_date
-                                  changed_time = ls_mod_item-changed_time
-                                  changed_by = ls_mod_item-changed_by ) )
+                  UPDATE FIELDS ( prodstat transstat notifid trresponse changeddate changedtime changedby )
+                  WITH VALUE #( ( %tky = VALUE #( tranid = ls_mod_item-tran_id itemno = ls_mod_item-item_no )
+                                  prodstat = ls_mod_item-prod_stat
+                                  transstat = ls_mod_item-trans_stat
+                                  notifid = ls_mod_item-notif_id
+                                  trresponse = ls_mod_item-tr_response
+                                  changeddate = ls_mod_item-changed_date
+                                  changedtime = ls_mod_item-changed_time
+                                  changedby = ls_mod_item-changed_by ) )
                   FAILED DATA(ls_failed_eml)
                   REPORTED DATA(ls_reported_eml).
               ENDLOOP.
@@ -316,21 +313,21 @@ CLASS lhc_Item IMPLEMENTATION.
       lv_item_no = '0001'.
 
       APPEND VALUE #( %cid = ls_key-%cid
-                      tran_id = lv_tran_id
-                      item_no = lv_item_no
+                      tranid = lv_tran_id
+                      itemno = lv_item_no
                       gtin = ls_param-gtin
-                      prod_qty = ls_param-prod_qty
+                      prodqty = ls_param-prod_qty
                       batch = ls_param-batch
-                      exp_date = ls_param-exp_date
-                      prod_stat = 'NEW'
-                      created_date = sy-datum
-                      created_time = sy-uzeit
-                      created_by = sy-uname ) TO lt_create.
+                      expdate = ls_param-exp_date
+                      prodstat = 'NEW'
+                      createddate = sy-datum
+                      createdtime = sy-uzeit
+                      createdby = sy-uname ) TO lt_create.
     ENDLOOP.
 
     MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      CREATE FIELDS ( tran_id item_no gtin prod_qty batch exp_date prod_stat created_date created_time created_by )
+      CREATE FIELDS ( tranid itemno gtin prodqty batch expdate prodstat createddate createdtime createdby )
       WITH lt_create
       MAPPED DATA(ls_mapped)
       FAILED DATA(ls_failed)
