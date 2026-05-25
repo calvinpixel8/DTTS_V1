@@ -2,7 +2,7 @@ unmanaged implementation in class zcl_mm_dtts_cockpit_bdef unique;
 strict ( 2 );
 with draft;
 define behavior for ZR_MM_DTTS_COCKPIT alias Item
-draft table zmm_sst_dtts_d
+draft table zmm_sst_dttsit2d
 lock master total etag changed_time
 authorization master ( instance )
 {
