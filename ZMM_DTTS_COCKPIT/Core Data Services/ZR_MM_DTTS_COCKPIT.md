@@ -15,7 +15,16 @@ define root view entity ZR_MM_DTTS_COCKPIT
       Item.prod_unit as produnit,
       Item.gtin,
       Item.batch,
-      Item.exp_date as expdate,
+
+      // Fix for Date Parsing / Preview Scroll Error
+      cast(
+        case
+          when length(Item.exp_date) = 8 and dats_is_valid(Item.exp_date) = 1
+            then Item.exp_date
+          else '00000000'
+        end as abap.dats
+      ) as expdate,
+
       Item.notif_id as notifid,
       Item.tr_response as trresponse,
       Item.mat_doc as matdoc,

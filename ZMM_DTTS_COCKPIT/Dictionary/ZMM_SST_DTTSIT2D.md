@@ -32,8 +32,12 @@ define table zmm_sst_dttsit2d {
   prodstat    : zmm_sst_prod_stat;
   transstat   : abap.char(1333);
   operation   : abap.char(20);
+  item_operation : abap.char(20);
+  fiscal_year : gjahr;
+  doc_year    : mjahr;
   frm_gln     : abap.char(13);
   to_gln      : abap.char(13);
+  auth_gln    : abap.char(13);
   "%admin"    : include sych_bdl_draft_admin_inc;
 
 }

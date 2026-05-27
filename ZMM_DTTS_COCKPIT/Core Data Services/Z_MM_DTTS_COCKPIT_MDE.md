@@ -8,12 +8,11 @@ annotate view ZC_MM_DTTS_COCKPIT with
                  label:           'Item Details',
                  position:        10 } ]
 
+  @UI.selectionField: [ { position: 30 } ]
   @UI.lineItem: [ { position: 10, label: 'Transaction ID' } ]
-  @UI.identification: [ { position: 10, label: 'Transaction ID' } ]
   tranid;
 
   @UI.lineItem: [ { position: 20, label: 'Item No' } ]
-  @UI.identification: [ { position: 20, label: 'Item No' } ]
   itemno;
 
   @UI.lineItem: [ { position: 30, label: 'From GLN' } ]
@@ -24,6 +23,7 @@ annotate view ZC_MM_DTTS_COCKPIT with
   @UI.identification: [ { position: 40, label: 'To GLN' } ]
   to_gln;
 
+  @UI.selectionField: [ { position: 40 } ]
   @UI.lineItem: [ { position: 50, label: 'GTIN' } ]
   @UI.identification: [ { position: 50, label: 'GTIN' } ]
   gtin;
@@ -36,24 +36,24 @@ annotate view ZC_MM_DTTS_COCKPIT with
   @UI.identification: [ { position: 70, label: 'Batch' } ]
   batch;
 
+  @UI.selectionField: [ { position: 50 } ]
   @UI.lineItem: [ { position: 80, label: 'Expiry Date' } ]
   @UI.identification: [ { position: 80, label: 'Expiry Date' } ]
   expdate;
 
+  @UI.selectionField: [ { position: 20 } ]
   @UI.lineItem: [ { position: 90, label: 'Status' } ]
-  @UI.identification: [ { position: 90, label: 'Status' } ]
   prodstat;
 
   @UI.lineItem: [ { position: 100, label: 'Transaction Status' } ]
-  @UI.identification: [ { position: 100, label: 'Transaction Status' } ]
   transstat;
 
   @UI.lineItem: [ { position: 110, label: 'Notification ID' } ]
-  @UI.identification: [ { position: 110, label: 'Notification ID' } ]
   notifid;
 
-  @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' }]
-  @UI.identification: [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' }]
-  matdoc; " Placeholder for action buttons
+  @UI.selectionField: [ { position: 10 } ]
+  @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
+                       { position: 120, label: 'Material Document' }]
+  matdoc;
 }
 ```
