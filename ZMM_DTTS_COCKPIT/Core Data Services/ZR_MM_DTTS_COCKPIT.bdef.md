@@ -1,4 +1,5 @@
 ```abap
+
 unmanaged implementation in class zcl_mm_dtts_cockpit_bdef unique;
 strict ( 2 );
 with draft;
@@ -13,7 +14,7 @@ authorization master ( instance )
   update ( features : instance ); // Only non-success can be updated
   delete;
 
-  field ( readonly ) mandt, tranid, itemno, prodstat, transstat, notifid;
+  field ( readonly )  tran_id, item_no, prodstat, transstat, notifid;
 
   // Actions
   action ( features : instance ) reprocess result [1] $self;
@@ -29,9 +30,9 @@ authorization master ( instance )
 
   mapping for zmm_sst_dtts_itm
   {
-    mandt = mandt;
-    tranid = tran_id;
-    itemno = item_no;
+
+    tran_id = tran_id;
+    item_no = item_no;
     zeile = zeile;
     product = product;
     prodname = prod_name;
