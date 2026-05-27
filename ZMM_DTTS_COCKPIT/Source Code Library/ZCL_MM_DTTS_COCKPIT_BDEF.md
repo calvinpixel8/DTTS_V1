@@ -33,7 +33,7 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
       IMPORTING keys FOR ACTION Item~reprocess RESULT result.
 
     METHODS createWithPopup FOR MODIFY
-      IMPORTING keys FOR ACTION Item~createWithPopup RESULT result.
+      IMPORTING keys FOR ACTION Item~createWithPopup.
 
     " ---------------------------------------------------------------------
     " Helper Methods for Request/Response
@@ -333,18 +333,8 @@ CLASS lhc_Item IMPLEMENTATION.
       FAILED DATA(ls_failed)
       REPORTED DATA(ls_reported).
 
-    " Return mapped keys
+    " Return mapped keys for factory actions
     mapped-item = ls_mapped-item.
-
-    " Return result mapping
-    READ ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
-      ENTITY Item
-      ALL FIELDS WITH CORRESPONDING ls_mapped-item
-      RESULT DATA(lt_created_items).
-
-    result = VALUE #( FOR ls_created IN lt_created_items
-                      ( %tky = ls_created-%tky
-                        %param = ls_created ) ).
   ENDMETHOD.
 
   " -------------------------------------------------------------
