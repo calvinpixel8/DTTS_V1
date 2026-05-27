@@ -113,7 +113,9 @@ CLASS lhc_Item IMPLEMENTATION.
           lo_proxy            TYPE REF TO object.
 
     FIELD-SYMBOLS: <fs_request> TYPE any,
-                   <fs_response> TYPE any.
+                   <fs_response> TYPE any,
+                   <lt_products> TYPE ANY TABLE,
+                   <lt_resp_products> TYPE ANY TABLE.
 
     " Process Each TRAN_ID Group
     LOOP AT lt_tran_ids INTO DATA(ls_tran_id).
@@ -156,7 +158,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
                 ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_accept_req> TO FIELD-SYMBOL(<fs_prod_list>).
                 IF sy-subrc = 0.
-                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list> TO FIELD-SYMBOL(<lt_products>).
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list> TO <lt_products>.
                    IF sy-subrc = 0.
                       LOOP AT lt_items INTO DATA(ls_item).
                         DATA lv_gtin_formatted TYPE string.
@@ -209,7 +211,7 @@ CLASS lhc_Item IMPLEMENTATION.
                   output = <fs_response>.
 
               " -------------------------------------------------------------
-              " Parse response, modify item properties in buffer (simulated by updating local table, to be handled by EML)
+              " Parse response, modify item properties in buffer
               " -------------------------------------------------------------
               DATA lv_all_success TYPE abap_bool VALUE abap_true.
               CASE lv_operation.
@@ -219,7 +221,7 @@ CLASS lhc_Item IMPLEMENTATION.
                     ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_accept_resp> TO FIELD-SYMBOL(<lv_notif_id>).
                     ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_accept_resp> TO FIELD-SYMBOL(<fs_resp_prod_list>).
                     IF sy-subrc = 0.
-                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list> TO FIELD-SYMBOL(<lt_resp_products>).
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list> TO <lt_resp_products>.
                       IF sy-subrc = 0.
                         LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod>).
                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod> TO FIELD-SYMBOL(<r_gtin>).
@@ -333,7 +335,7 @@ CLASS lhc_Item IMPLEMENTATION.
       FAILED DATA(ls_failed)
       REPORTED DATA(ls_reported).
 
-    " Return mapped keys for factory actions
+    " Return mapped keys
     mapped-item = ls_mapped-item.
   ENDMETHOD.
 

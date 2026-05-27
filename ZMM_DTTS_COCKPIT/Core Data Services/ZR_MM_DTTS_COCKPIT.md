@@ -2,14 +2,11 @@
 @AccessControl.authorizationCheck: #NOT_REQUIRED
 @EndUserText.label: 'DTTS Cockpit Root View'
 define root view entity ZR_MM_DTTS_COCKPIT
-  as select from zmm_sst_dtts_itm as Item
-  association [1..1] to zmm_sst_dtts_hdr as _Header
-   -- on  $projection.mandt   = _Header.mandt
-    on $projection.tran_id = _Header.tran_id
+  as select from ZIMMDTTS_4 as Item
 {
- -- key Item.mandt,
-  key Item.tran_id ,
-  key Item.item_no ,
+  key Item.mandt,
+  key Item.tran_id as tranid,
+  key Item.item_no as itemno,
       Item.zeile,
       Item.product,
       Item.prod_name as prodname,
@@ -32,11 +29,12 @@ define root view entity ZR_MM_DTTS_COCKPIT
       Item.changed_by as changedby,
       Item.prod_stat as prodstat,
       Item.trans_stat as transstat,
-      /* Associations */
-      _Header,
-      _Header.operation as operation,
-      _Header.frm_gln   as frm_gln,
-      _Header.to_gln    as to_gln
+      Item.header_operation as operation,
+      Item.item_operation,
+      Item.fiscal_year,
+      Item.DOC_YEAR,
+      Item.frm_gln,
+      Item.to_gln,
+      Item.auth_gln
 }
-
 ```

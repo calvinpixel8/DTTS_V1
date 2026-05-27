@@ -1,5 +1,4 @@
 ```abap
-
 @EndUserText.label: 'DTTS Cockpit Projection View'
 @AccessControl.authorizationCheck: #NOT_REQUIRED
 @Metadata.allowExtensions: true
@@ -8,13 +7,11 @@ define root view entity ZC_MM_DTTS_COCKPIT
   provider contract transactional_query
   as projection on ZR_MM_DTTS_COCKPIT
 {
-  --key mandt,
-  key tran_id,
-  key item_no,
+  key mandt,
+  key tranid,
+  key itemno,
       zeile,
       product,
-  @Search.defaultSearchElement: true
-  @Search.fuzzinessThreshold: 0.8
       prodname,
       prodqty,
       produnit,
@@ -38,5 +35,4 @@ define root view entity ZC_MM_DTTS_COCKPIT
       frm_gln,
       to_gln
 }
-
 ```
