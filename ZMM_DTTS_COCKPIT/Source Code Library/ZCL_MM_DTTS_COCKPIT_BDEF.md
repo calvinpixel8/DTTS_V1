@@ -71,6 +71,11 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS execute_reprocess IMPORTING it_keys TYPE tt_keys
                               EXPORTING et_update_buffer TYPE tt_dttsit2.
 
+    METHODS populate_full_error_record IMPORTING is_item TYPE STRUCTURE FOR READ RESULT zr_mm_dtts_cockpit\\Item
+                                                 iv_trans_stat TYPE string
+                                                 it_header TYPE ANY TABLE
+                                       RETURNING VALUE(rs_err) TYPE zmm_sst_dttsit2.
+
 ENDCLASS.
 
 CLASS lhc_Item IMPLEMENTATION.
@@ -168,9 +173,10 @@ CLASS lhc_Item IMPLEMENTATION.
             ls_dttsit2-created_by = ls_base-createdby.
             ls_dttsit2-prod_stat = ls_base-prodstat.
             ls_dttsit2-trans_stat = ls_base-transstat.
-            ls_dttsit2-operation = ls_base-operation.
-            ls_dttsit2-frm_gln = ls_base-frm_gln.
-            ls_dttsit2-to_gln = ls_base-to_gln.
+
+            " Fetch Header Fields
+            SELECT SINGLE operation, frm_gln, to_gln FROM zmm_sst_dtts_hdr INTO (@ls_dttsit2-operation, @ls_dttsit2-frm_gln, @ls_dttsit2-to_gln)
+              WHERE mat_doc = @ls_entity-matdoc AND doc_yr = @ls_entity-docyear AND mvt_type = @ls_entity-mvttype.
 
             APPEND ls_dttsit2 TO lcl_buffer=>mt_create.
           ENDIF.
@@ -221,8 +227,23 @@ CLASS lhc_Item IMPLEMENTATION.
        LOOP AT lt_processed_updates INTO DATA(ls_proc).
          READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
          IF sy-subrc = 0.
+            " Ensure all specified fields are overwritten in the buffer from the execute_reprocess result
+            <fs_buf>-zeile = ls_proc-zeile.
+            <fs_buf>-product = ls_proc-product.
+            <fs_buf>-prod_name = ls_proc-prod_name.
+            <fs_buf>-prod_qty = ls_proc-prod_qty.
+            <fs_buf>-prod_unit = ls_proc-prod_unit.
+            <fs_buf>-gtin = ls_proc-gtin.
+            <fs_buf>-batch = ls_proc-batch.
+            <fs_buf>-exp_date = ls_proc-exp_date.
             <fs_buf>-notif_id = ls_proc-notif_id.
             <fs_buf>-tr_response = ls_proc-tr_response.
+            <fs_buf>-mat_doc = ls_proc-mat_doc.
+            <fs_buf>-mvt_type = ls_proc-mvt_type.
+            <fs_buf>-operation = ls_proc-operation.
+            <fs_buf>-frm_gln = ls_proc-frm_gln.
+            <fs_buf>-to_gln = ls_proc-to_gln.
+
             <fs_buf>-prod_stat = ls_proc-prod_stat.
             <fs_buf>-trans_stat = ls_proc-trans_stat.
             <fs_buf>-changed_date = ls_proc-changed_date.
@@ -231,8 +252,22 @@ CLASS lhc_Item IMPLEMENTATION.
          ELSE.
             READ TABLE lcl_buffer=>mt_create ASSIGNING <fs_create> WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
             IF sy-subrc = 0.
+               <fs_create>-zeile = ls_proc-zeile.
+               <fs_create>-product = ls_proc-product.
+               <fs_create>-prod_name = ls_proc-prod_name.
+               <fs_create>-prod_qty = ls_proc-prod_qty.
+               <fs_create>-prod_unit = ls_proc-prod_unit.
+               <fs_create>-gtin = ls_proc-gtin.
+               <fs_create>-batch = ls_proc-batch.
+               <fs_create>-exp_date = ls_proc-exp_date.
                <fs_create>-notif_id = ls_proc-notif_id.
                <fs_create>-tr_response = ls_proc-tr_response.
+               <fs_create>-mat_doc = ls_proc-mat_doc.
+               <fs_create>-mvt_type = ls_proc-mvt_type.
+               <fs_create>-operation = ls_proc-operation.
+               <fs_create>-frm_gln = ls_proc-frm_gln.
+               <fs_create>-to_gln = ls_proc-to_gln.
+
                <fs_create>-prod_stat = ls_proc-prod_stat.
                <fs_create>-trans_stat = ls_proc-trans_stat.
                <fs_create>-changed_date = ls_proc-changed_date.
@@ -287,8 +322,22 @@ CLASS lhc_Item IMPLEMENTATION.
      LOOP AT lt_processed_updates INTO DATA(ls_proc).
          READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
          IF sy-subrc = 0.
+            <fs_buf>-zeile = ls_proc-zeile.
+            <fs_buf>-product = ls_proc-product.
+            <fs_buf>-prod_name = ls_proc-prod_name.
+            <fs_buf>-prod_qty = ls_proc-prod_qty.
+            <fs_buf>-prod_unit = ls_proc-prod_unit.
+            <fs_buf>-gtin = ls_proc-gtin.
+            <fs_buf>-batch = ls_proc-batch.
+            <fs_buf>-exp_date = ls_proc-exp_date.
             <fs_buf>-notif_id = ls_proc-notif_id.
             <fs_buf>-tr_response = ls_proc-tr_response.
+            <fs_buf>-mat_doc = ls_proc-mat_doc.
+            <fs_buf>-mvt_type = ls_proc-mvt_type.
+            <fs_buf>-operation = ls_proc-operation.
+            <fs_buf>-frm_gln = ls_proc-frm_gln.
+            <fs_buf>-to_gln = ls_proc-to_gln.
+
             <fs_buf>-prod_stat = ls_proc-prod_stat.
             <fs_buf>-trans_stat = ls_proc-trans_stat.
             <fs_buf>-changed_date = ls_proc-changed_date.
@@ -309,17 +358,56 @@ CLASS lhc_Item IMPLEMENTATION.
                          %param = ls_updated ) ).
   ENDMETHOD.
 
+  METHOD populate_full_error_record.
+     " Helper to preserve all fields when an API exception occurs so we don't wipe data in ZMM_SST_DTTSIT2
+     SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @rs_err
+       WHERE tran_id = @is_item-tranid AND item_no = @is_item-itemno.
+
+     rs_err-mandt = sy-mandt.
+     rs_err-tran_id = is_item-tranid.
+     rs_err-item_no = is_item-itemno.
+     rs_err-zeile = is_item-zeile.
+     rs_err-product = is_item-product.
+     rs_err-prod_name = is_item-prodname.
+     rs_err-prod_qty = is_item-prodqty.
+     rs_err-prod_unit = is_item-produnit.
+     rs_err-gtin = is_item-gtin.
+     rs_err-batch = is_item-batch.
+     rs_err-exp_date = is_item-expdate.
+     rs_err-mat_doc = is_item-matdoc.
+     rs_err-mvt_type = is_item-mvttype.
+
+     IF it_header IS NOT INITIAL.
+       ASSIGN it_header[ 1 ] TO FIELD-SYMBOL(<fs_hdr>).
+       IF sy-subrc = 0.
+         ASSIGN COMPONENT 'OPERATION' OF STRUCTURE <fs_hdr> TO FIELD-SYMBOL(<op>).
+         IF sy-subrc = 0. rs_err-operation = <op>. ENDIF.
+         ASSIGN COMPONENT 'FRM_GLN' OF STRUCTURE <fs_hdr> TO FIELD-SYMBOL(<fg>).
+         IF sy-subrc = 0. rs_err-frm_gln = <fg>. ENDIF.
+         ASSIGN COMPONENT 'TO_GLN' OF STRUCTURE <fs_hdr> TO FIELD-SYMBOL(<tg>).
+         IF sy-subrc = 0. rs_err-to_gln = <tg>. ENDIF.
+       ENDIF.
+     ENDIF.
+
+     rs_err-prod_stat = 'ERROR'.
+     rs_err-trans_stat = iv_trans_stat.
+     rs_err-changed_date = sy-datum.
+     rs_err-changed_time = sy-uzeit.
+     rs_err-changed_by = sy-uname.
+  ENDMETHOD.
+
   METHOD execute_reprocess.
     TYPES: BEGIN OF ty_header_key,
              docyear TYPE mjahr,
              matdoc TYPE mblnr,
+             mvttype TYPE bwart,
            END OF ty_header_key.
     DATA: lt_header_keys TYPE TABLE OF ty_header_key.
 
     LOOP AT it_keys INTO DATA(ls_key).
-      APPEND VALUE #( docyear = ls_key-docyear matdoc = ls_key-matdoc ) TO lt_header_keys.
+      APPEND VALUE #( docyear = ls_key-docyear matdoc = ls_key-matdoc mvttype = ls_key-mvttype ) TO lt_header_keys.
     ENDLOOP.
-    SORT lt_header_keys BY docyear matdoc.
+    SORT lt_header_keys BY docyear matdoc mvttype.
     DELETE ADJACENT DUPLICATES FROM lt_header_keys.
 
     DATA: lt_header  TYPE TABLE OF zmm_sst_dtts_hdr,
@@ -341,7 +429,7 @@ CLASS lhc_Item IMPLEMENTATION.
     LOOP AT lt_header_keys INTO DATA(ls_hdr_key).
       CLEAR: lt_header, lt_items.
 
-      LOOP AT it_keys INTO DATA(ls_k) WHERE docyear = ls_hdr_key-docyear AND matdoc = ls_hdr_key-matdoc.
+      LOOP AT it_keys INTO DATA(ls_k) WHERE docyear = ls_hdr_key-docyear AND matdoc = ls_hdr_key-matdoc AND mvttype = ls_hdr_key-mvttype.
         DATA ls_item_st TYPE STRUCTURE FOR READ RESULT zr_mm_dtts_cockpit\\Item.
 
         " Fetch logical-to-physical tran_id
@@ -350,13 +438,13 @@ CLASS lhc_Item IMPLEMENTATION.
 
         READ TABLE lcl_buffer=>mt_create INTO DATA(ls_buf) WITH KEY tran_id = lv_t item_no = ls_k-itemno.
         IF sy-subrc = 0.
-           ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type itemno = item_no tranid = tran_id prodqty = prod_qty expdate = exp_date ).
+           ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type itemno = item_no tranid = tran_id prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
            ls_item_st-docyear = ls_k-docyear. " Force mapped key
            APPEND ls_item_st TO lt_items.
         ELSE.
            READ TABLE lcl_buffer=>mt_update INTO ls_buf WITH KEY tran_id = lv_t item_no = ls_k-itemno.
            IF sy-subrc = 0.
-             ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type itemno = item_no tranid = tran_id prodqty = prod_qty expdate = exp_date ).
+             ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type itemno = item_no tranid = tran_id prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
              ls_item_st-docyear = ls_k-docyear.
              APPEND ls_item_st TO lt_items.
            ELSE.
@@ -371,12 +459,8 @@ CLASS lhc_Item IMPLEMENTATION.
       ENDLOOP.
 
       IF lt_items IS NOT INITIAL.
-        DATA(lv_tran_id) = lt_items[ 1 ]-tranid.
-
-        IF lv_tran_id IS NOT INITIAL.
-          SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
-            WHERE tran_id = @lv_tran_id.
-        ENDIF.
+        SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
+          WHERE mat_doc = @ls_hdr_key-matdoc AND doc_yr = @ls_hdr_key-docyear AND mvt_type = @ls_hdr_key-mvttype.
 
         DATA lv_operation TYPE string.
         IF lt_header IS NOT INITIAL AND lt_header[ 1 ]-operation IS NOT INITIAL.
@@ -501,15 +585,37 @@ CLASS lhc_Item IMPLEMENTATION.
 
                                DATA ls_processed_dttsit2 TYPE zmm_sst_dttsit2.
 
-                               SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @ls_processed_dttsit2
+                               " Fetch base data from base table zmm_sst_dtts_itm (or via buffer if exists)
+                               " to ensure all fields requested are transferred
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
                                  WHERE tran_id = @<fs_item>-tranid AND item_no = @<fs_item>-itemno.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
                                ls_processed_dttsit2-tran_id = <fs_item>-tranid.
                                ls_processed_dttsit2-item_no = <fs_item>-itemno.
+
+                               " Item Fields (override with any buffered changes if needed, else fallback to ITM)
+                               ls_processed_dttsit2-zeile = <fs_item>-zeile.
+                               ls_processed_dttsit2-product = <fs_item>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item>-expdate.
                                ls_processed_dttsit2-notif_id = <lv_notif_id>.
                                ls_processed_dttsit2-tr_response = <r_rc>.
+                               ls_processed_dttsit2-mat_doc = <fs_item>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item>-mvttype.
 
+                               " Header Fields
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+
+                               " Status Fields
                                IF <r_rc> = '00000'.
                                  ls_processed_dttsit2-prod_stat = 'SUCCESS'.
                                ELSE.
@@ -535,39 +641,15 @@ CLASS lhc_Item IMPLEMENTATION.
 
             CATCH cx_ai_application_fault INTO DATA(lx_app_fault).
                LOOP AT lt_items ASSIGNING <fs_item>.
-                 DATA ls_err_app TYPE zmm_sst_dttsit2.
-                 ls_err_app-tran_id = <fs_item>-tranid.
-                 ls_err_app-item_no = <fs_item>-itemno.
-                 ls_err_app-prod_stat = 'ERROR'.
-                 ls_err_app-trans_stat = 'API Application Fault'.
-                 ls_err_app-changed_date = sy-datum.
-                 ls_err_app-changed_time = sy-uzeit.
-                 ls_err_app-changed_by = sy-uname.
-                 APPEND ls_err_app TO et_update_buffer.
+                 APPEND me->populate_full_error_record( is_item = <fs_item> it_header = lt_header iv_trans_stat = 'API Application Fault' ) TO et_update_buffer.
                ENDLOOP.
             CATCH cx_ai_system_fault INTO DATA(lx_sys).
                LOOP AT lt_items ASSIGNING <fs_item>.
-                 DATA ls_err_sys TYPE zmm_sst_dttsit2.
-                 ls_err_sys-tran_id = <fs_item>-tranid.
-                 ls_err_sys-item_no = <fs_item>-itemno.
-                 ls_err_sys-prod_stat = 'ERROR'.
-                 ls_err_sys-trans_stat = 'API System Fault'.
-                 ls_err_sys-changed_date = sy-datum.
-                 ls_err_sys-changed_time = sy-uzeit.
-                 ls_err_sys-changed_by = sy-uname.
-                 APPEND ls_err_sys TO et_update_buffer.
+                 APPEND me->populate_full_error_record( is_item = <fs_item> it_header = lt_header iv_trans_stat = 'API System Fault' ) TO et_update_buffer.
                ENDLOOP.
             CATCH cx_root INTO DATA(lx_root).
                LOOP AT lt_items ASSIGNING <fs_item>.
-                 DATA ls_err_root TYPE zmm_sst_dttsit2.
-                 ls_err_root-tran_id = <fs_item>-tranid.
-                 ls_err_root-item_no = <fs_item>-itemno.
-                 ls_err_root-prod_stat = 'ERROR'.
-                 ls_err_root-trans_stat = 'Generic API Error'.
-                 ls_err_root-changed_date = sy-datum.
-                 ls_err_root-changed_time = sy-uzeit.
-                 ls_err_root-changed_by = sy-uname.
-                 APPEND ls_err_root TO et_update_buffer.
+                 APPEND me->populate_full_error_record( is_item = <fs_item> it_header = lt_header iv_trans_stat = 'Generic API Error' ) TO et_update_buffer.
                ENDLOOP.
           ENDTRY.
         ENDIF.
