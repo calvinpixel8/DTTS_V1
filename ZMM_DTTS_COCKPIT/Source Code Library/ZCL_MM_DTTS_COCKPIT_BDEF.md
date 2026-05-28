@@ -189,9 +189,29 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD read.
+    " Unmanaged read implementation to satisfy OData V4 retrieval of active entities.
+    DATA: lt_read_data TYPE TABLE OF zr_mm_dtts_cockpit.
+
+    IF keys IS NOT INITIAL.
+      SELECT * FROM zr_mm_dtts_cockpit
+        FOR ALL ENTRIES IN @keys
+        WHERE tranid = @keys-tranid
+          AND itemno = @keys-itemno
+        INTO CORRESPONDING FIELDS OF TABLE @lt_read_data.
+
+      IF sy-subrc = 0.
+        " Map DB results to the expected RESULT structure
+        LOOP AT lt_read_data INTO DATA(ls_read_data).
+          INSERT VALUE #( %tky = VALUE #( tranid = ls_read_data-tranid itemno = ls_read_data-itemno )
+                          %data = CORRESPONDING #( ls_read_data ) ) INTO TABLE result.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
   ENDMETHOD.
 
   METHOD lock.
+    " Implementation for pessimistic locking on active instances
+    " For unmanaged draft, typically handled implicitly if purely shadow-driven, or explicitly via ENQUEUE.
   ENDMETHOD.
 
   METHOD reprocess.
@@ -379,7 +399,7 @@ CLASS lhc_Item IMPLEMENTATION.
                   output = <fs_response>.
 
               " -------------------------------------------------------------
-              " Parse response, modify item properties in buffer
+              " Parse response, prepare updates directly for global buffer
               " -------------------------------------------------------------
               DATA lv_all_success TYPE abap_bool VALUE abap_true.
               CASE lv_operation.
