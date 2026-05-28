@@ -1,42 +1,127 @@
 ```abap
-@AbapCatalog.sqlViewName: 'ZVIMMDTTFYH'
+@AbapCatalog.sqlViewName: 'ZV_DTTS_FYHLP'
 @AbapCatalog.compiler.compareFilter: true
 @AbapCatalog.preserveKey: true
-@AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Fiscal Year Helper for DTTS Items'
-define view ZIMM_DTTS_FY_HELPER
-  as select from ZIMMDTTS_3 as itm
-{
-  key itm.mandt,
-  key itm.DOC_YEAR,
-  key itm.mat_doc,
-  key itm.mvt_type,
-  key itm.item_no,
-      itm.tran_id,
-      itm.zeile,
-      itm.product,
-      itm.prod_name,
-      itm.prod_qty,
-      itm.prod_unit,
-      itm.gtin,
-      itm.batch,
-      itm.exp_date,
-      itm.notif_id,
-      itm.tr_response,
-      itm.sr_number,
-      itm.created_date,
-      itm.created_time,
-      itm.created_by,
-      itm.changed_date,
-      itm.changed_time,
-      itm.changed_by,
-      itm.prod_stat,
-      itm.trans_stat,
-      itm.operation,
+@ClientHandling.algorithm: #SESSION_VARIABLE
+@EndUserText.label: 'DTTS Fiscal Year Helper'
 
-      case
-        when itm.mat_doc is not initial then itm.DOC_YEAR
-        else '0000'
-      end as fiscal_year
+define view ZIMM_DTTS_FY_HELPER
+  as select from ZIMMDTTS_3
+{
+  key mandt,
+  key DOC_YEAR,
+  key mat_doc,
+  key mvt_type,
+  key item_no,
+      tran_id,
+      zeile,
+      product,
+      prod_name,
+      prod_qty,
+      prod_unit,
+      gtin,
+      batch,
+      exp_date,
+      notif_id,
+      tr_response,
+      sr_number,
+      created_date,
+      created_time,
+      created_by,
+      changed_date,
+      changed_time,
+      changed_by,
+      prod_stat,
+      trans_stat,
+
+    cast(
+      case substring( created_date, 5, 2 )
+
+        when '01' then
+          case substring( created_date, 4, 1 )
+            when '1' then concat( substring( created_date, 1, 3 ), '0' )
+            when '2' then concat( substring( created_date, 1, 3 ), '1' )
+            when '3' then concat( substring( created_date, 1, 3 ), '2' )
+            when '4' then concat( substring( created_date, 1, 3 ), '3' )
+            when '5' then concat( substring( created_date, 1, 3 ), '4' )
+            when '6' then concat( substring( created_date, 1, 3 ), '5' )
+            when '7' then concat( substring( created_date, 1, 3 ), '6' )
+            when '8' then concat( substring( created_date, 1, 3 ), '7' )
+            when '9' then concat( substring( created_date, 1, 3 ), '8' )
+            when '0' then
+              case substring( created_date, 3, 1 )
+                when '1' then concat( substring( created_date, 1, 2 ), '09' )
+                when '2' then concat( substring( created_date, 1, 2 ), '19' )
+                when '3' then concat( substring( created_date, 1, 2 ), '29' )
+                when '4' then concat( substring( created_date, 1, 2 ), '39' )
+                when '5' then concat( substring( created_date, 1, 2 ), '49' )
+                when '6' then concat( substring( created_date, 1, 2 ), '59' )
+                when '7' then concat( substring( created_date, 1, 2 ), '69' )
+                when '8' then concat( substring( created_date, 1, 2 ), '79' )
+                when '9' then concat( substring( created_date, 1, 2 ), '89' )
+                else          concat( substring( created_date, 1, 2 ), '99' )
+              end
+            else substring( created_date, 1, 4 )
+          end
+
+        when '02' then
+          case substring( created_date, 4, 1 )
+            when '1' then concat( substring( created_date, 1, 3 ), '0' )
+            when '2' then concat( substring( created_date, 1, 3 ), '1' )
+            when '3' then concat( substring( created_date, 1, 3 ), '2' )
+            when '4' then concat( substring( created_date, 1, 3 ), '3' )
+            when '5' then concat( substring( created_date, 1, 3 ), '4' )
+            when '6' then concat( substring( created_date, 1, 3 ), '5' )
+            when '7' then concat( substring( created_date, 1, 3 ), '6' )
+            when '8' then concat( substring( created_date, 1, 3 ), '7' )
+            when '9' then concat( substring( created_date, 1, 3 ), '8' )
+            when '0' then
+              case substring( created_date, 3, 1 )
+                when '1' then concat( substring( created_date, 1, 2 ), '09' )
+                when '2' then concat( substring( created_date, 1, 2 ), '19' )
+                when '3' then concat( substring( created_date, 1, 2 ), '29' )
+                when '4' then concat( substring( created_date, 1, 2 ), '39' )
+                when '5' then concat( substring( created_date, 1, 2 ), '49' )
+                when '6' then concat( substring( created_date, 1, 2 ), '59' )
+                when '7' then concat( substring( created_date, 1, 2 ), '69' )
+                when '8' then concat( substring( created_date, 1, 2 ), '79' )
+                when '9' then concat( substring( created_date, 1, 2 ), '89' )
+                else          concat( substring( created_date, 1, 2 ), '99' )
+              end
+            else substring( created_date, 1, 4 )
+          end
+
+        when '03' then
+          case substring( created_date, 4, 1 )
+            when '1' then concat( substring( created_date, 1, 3 ), '0' )
+            when '2' then concat( substring( created_date, 1, 3 ), '1' )
+            when '3' then concat( substring( created_date, 1, 3 ), '2' )
+            when '4' then concat( substring( created_date, 1, 3 ), '3' )
+            when '5' then concat( substring( created_date, 1, 3 ), '4' )
+            when '6' then concat( substring( created_date, 1, 3 ), '5' )
+            when '7' then concat( substring( created_date, 1, 3 ), '6' )
+            when '8' then concat( substring( created_date, 1, 3 ), '7' )
+            when '9' then concat( substring( created_date, 1, 3 ), '8' )
+            when '0' then
+              case substring( created_date, 3, 1 )
+                when '1' then concat( substring( created_date, 1, 2 ), '09' )
+                when '2' then concat( substring( created_date, 1, 2 ), '19' )
+                when '3' then concat( substring( created_date, 1, 2 ), '29' )
+                when '4' then concat( substring( created_date, 1, 2 ), '39' )
+                when '5' then concat( substring( created_date, 1, 2 ), '49' )
+                when '6' then concat( substring( created_date, 1, 2 ), '59' )
+                when '7' then concat( substring( created_date, 1, 2 ), '69' )
+                when '8' then concat( substring( created_date, 1, 2 ), '79' )
+                when '9' then concat( substring( created_date, 1, 2 ), '89' )
+                else          concat( substring( created_date, 1, 2 ), '99' )
+              end
+            else substring( created_date, 1, 4 )
+          end
+
+        else substring( created_date, 1, 4 )
+
+            end as abap.numc(4)
+        ) as fiscal_year,
+      operation
 }
 ```

@@ -7,12 +7,9 @@
 define table zmm_sst_dtts_itm {
 
   key mandt    : mandt not null;
-  key doc_year : mjahr not null;
-  key mat_doc  : mblnr not null;
-  key mvt_type : bwart not null;
+  key tran_id  : ztran_id not null;
   @EndUserText.label : 'Item Number'
   key item_no  : abap.numc(4) not null;
-  tran_id      : ztran_id;
   zeile        : mblpo;
   product      : matnr;
   prod_name    : maktx;
@@ -24,6 +21,8 @@ define table zmm_sst_dtts_itm {
   exp_date     : zmm_sst_expiry_date;
   notif_id     : zmm_sst_notif_id;
   tr_response  : zmm_sst_response;
+  mat_doc      : mblnr;
+  mvt_type     : bwart;
   sr_number    : zmm_br_serial_no;
   created_date : dats;
   created_time : tims;

@@ -1,66 +1,77 @@
 ```abap
-@AbapCatalog.sqlViewName: 'ZVIMMDTTSO'
-@AbapCatalog.compiler.compareFilter: true
-@AbapCatalog.preserveKey: true
-@ClientHandling.algorithm: #SESSION_VARIABLE
-@EndUserText.label: 'DTTS Items - Union of Edited and Original'
+@AbapCatalog.sqlViewName: 'ZVIMMDTTS_3'
+@EndUserText.label: 'DTTS Items - Combined View (Latest State)'
 define view ZIMMDTTS_3
-  as select from zmm_sst_dttsit2 as curr
+  as
+
+/* 1. Always take latest (Table2) */
+select from zmm_sst_dttsit2 as t2
 {
-  key curr.mandt,
-  key curr.doc_year as DOC_YEAR,
-  key curr.mat_doc,
-  key curr.mvt_type,
-  key curr.item_no,
-      curr.tran_id,
-      curr.zeile,
-      curr.product,
-      curr.prod_name,
-      curr.prod_qty,
-      curr.prod_unit,
-      curr.gtin,
-      curr.batch,
-      curr.exp_date,
-      curr.notif_id,
-      curr.tr_response,
-      curr.sr_number,
-      curr.created_date,
-      curr.created_time,
-      curr.created_by,
-      curr.changed_date,
-      curr.changed_time,
-      curr.changed_by,
-      curr.prod_stat,
-      curr.trans_stat,
-      curr.operation
+  key t2.mandt,
+  key cast( substring( t2.created_date, 1, 4 ) as abap.numc(4) ) as DOC_YEAR,
+  key t2.mat_doc,
+  key t2.mvt_type,
+  key t2.item_no,
+      t2.tran_id,
+      t2.zeile,
+      t2.product,
+      t2.prod_name,
+      t2.prod_qty,
+      t2.prod_unit,
+      t2.gtin,
+      t2.batch,
+      t2.exp_date,
+      t2.notif_id,
+      t2.tr_response,
+      t2.sr_number,
+      t2.created_date,
+      t2.created_time,
+      t2.created_by,
+      t2.changed_date,
+      t2.changed_time,
+      t2.changed_by,
+      t2.prod_stat,
+      t2.trans_stat,
+      t2.operation
 }
-union all select from zmm_sst_dtts_itm as orig
+
+union all
+
+/* 2. Take from Table1 ONLY if no record in Table2 */
+select from zmm_sst_dtts_itm as t1
+  left outer join zmm_sst_dttsit2 as t2
+    on  t1.mandt   = t2.mandt
+    and t1.tran_id = t2.tran_id
+    and t1.item_no = t2.item_no
+
 {
-  key orig.mandt,
-  key orig.doc_year as DOC_YEAR,
-  key orig.mat_doc,
-  key orig.mvt_type,
-  key orig.item_no,
-      orig.tran_id,
-      orig.zeile,
-      orig.product,
-      orig.prod_name,
-      orig.prod_qty,
-      orig.prod_unit,
-      orig.gtin,
-      orig.batch,
-      orig.exp_date,
-      orig.notif_id,
-      orig.tr_response,
-      orig.sr_number,
-      orig.created_date,
-      orig.created_time,
-      orig.created_by,
-      orig.changed_date,
-      orig.changed_time,
-      orig.changed_by,
-      orig.prod_stat,
-      orig.trans_stat,
+  key t1.mandt,
+  key cast( substring( t1.created_date, 1, 4 ) as abap.numc(4) ) as DOC_YEAR,
+  key t1.mat_doc,
+  key t1.mvt_type,
+  key t1.item_no,
+      t1.tran_id,
+      t1.zeile,
+      t1.product,
+      t1.prod_name,
+      t1.prod_qty,
+      t1.prod_unit,
+      t1.gtin,
+      t1.batch,
+      t1.exp_date,
+      t1.notif_id,
+      t1.tr_response,
+      t1.sr_number,
+      t1.created_date,
+      t1.created_time,
+      t1.created_by,
+      t1.changed_date,
+      t1.changed_time,
+      t1.changed_by,
+      t1.prod_stat,
+      t1.trans_stat,
       cast('' as abap.char(20)) as operation
+
 }
+where t2.mandt is null
 ```

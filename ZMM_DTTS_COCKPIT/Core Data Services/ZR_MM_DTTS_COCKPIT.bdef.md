@@ -27,33 +27,5 @@ authorization master ( instance )
   draft action Resume;
   draft determine action Prepare;
 
-  mapping for zmm_sst_dtts_itm
-  {
-    mandt = mandt;
-    docyear = doc_year;
-    matdoc = mat_doc;
-    mvttype = mvt_type;
-    itemno = item_no;
-    tranid = tran_id;
-    zeile = zeile;
-    product = product;
-    prodname = prod_name;
-    prodqty = prod_qty;
-    produnit = prod_unit;
-    gtin = gtin;
-    batch = batch;
-    expdate = exp_date;
-    notifid = notif_id;
-    trresponse = tr_response;
-    srnumber = sr_number;
-    createddate = created_date;
-    createdtime = created_time;
-    createdby = created_by;
-    changeddate = changed_date;
-    changedtime = changed_time;
-    changedby = changed_by;
-    prodstat = prod_stat;
-    transstat = trans_stat;
-  }
 }
 ```
