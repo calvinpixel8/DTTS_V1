@@ -7,8 +7,11 @@
 define table zmm_sst_dttsit2d {
 
   key mandt   : mandt not null;
-  key tranid  : ztran_id not null;
+  key docyear : mjahr not null;
+  key matdoc  : mblnr not null;
+  key mvttype : bwart not null;
   key itemno  : abap.numc(4) not null;
+  tranid      : ztran_id;
   zeile       : mblpo;
   product     : matnr;
   prodname    : maktx;
@@ -20,8 +23,6 @@ define table zmm_sst_dttsit2d {
   expdate     : zmm_sst_expiry_date;
   notifid     : zmm_sst_notif_id;
   trresponse  : zmm_sst_response;
-  matdoc      : mblnr;
-  mvttype     : bwart;
   srnumber    : zmm_br_serial_no;
   createddate : dats;
   createdtime : tims;
@@ -34,7 +35,6 @@ define table zmm_sst_dttsit2d {
   operation   : abap.char(20);
   item_operation : abap.char(20);
   fiscal_year : gjahr;
-  doc_year    : mjahr;
   frm_gln     : abap.char(13);
   to_gln      : abap.char(13);
   auth_gln    : abap.char(13);

@@ -1,15 +1,17 @@
 ```abap
-@EndUserText.label : 'DTTS Items - Current State Table'
+@EndUserText.label : 'DTTS Items Updated table'
 @AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
 @AbapCatalog.tableCategory : #TRANSPARENT
 @AbapCatalog.deliveryClass : #A
-@AbapCatalog.dataMaintenance : #ALLOWED
+@AbapCatalog.dataMaintenance : #RESTRICTED
 define table zmm_sst_dttsit2 {
 
   key mandt    : mandt not null;
-  key tran_id  : abap.char(20) not null;
-  @EndUserText.label : 'Item Number'
+  key doc_year : mjahr not null;
+  key mat_doc  : mblnr not null;
+  key mvt_type : bwart not null;
   key item_no  : abap.numc(4) not null;
+  tran_id      : ztran_id;
   zeile        : mblpo;
   product      : matnr;
   prod_name    : maktx;
@@ -21,8 +23,6 @@ define table zmm_sst_dttsit2 {
   exp_date     : zmm_sst_expiry_date;
   notif_id     : zmm_sst_notif_id;
   tr_response  : zmm_sst_response;
-  mat_doc      : mblnr;
-  mvt_type     : bwart;
   sr_number    : zmm_br_serial_no;
   created_date : dats;
   created_time : tims;
@@ -31,9 +31,7 @@ define table zmm_sst_dttsit2 {
   changed_time : tims;
   changed_by   : xubname;
   prod_stat    : zmm_sst_prod_stat;
-  @EndUserText.label : 'Transaction Status'
   trans_stat   : abap.char(1333);
-  @EndUserText.label : 'Operation'
   operation    : abap.char(20);
   frm_gln      : abap.char(13);
   to_gln       : abap.char(13);

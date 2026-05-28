@@ -18,7 +18,9 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PRIVATE SECTION.
 
     TYPES: BEGIN OF ty_key,
-             tranid TYPE ztran_id,
+             docyear TYPE mjahr,
+             matdoc TYPE mblnr,
+             mvttype TYPE bwart,
              itemno TYPE numc4,
            END OF ty_key.
     TYPES: tt_keys TYPE STANDARD TABLE OF ty_key WITH DEFAULT KEY.
@@ -95,8 +97,11 @@ CLASS lhc_Item IMPLEMENTATION.
     LOOP AT entities INTO DATA(ls_entity).
       DATA(ls_dttsit2) = VALUE zmm_sst_dttsit2(
         mandt     = sy-mandt
-        tran_id   = ls_entity-tranid
+        doc_year  = ls_entity-docyear
+        mat_doc   = ls_entity-matdoc
+        mvt_type  = ls_entity-mvttype
         item_no   = ls_entity-itemno
+        tran_id   = ls_entity-tranid
         zeile     = ls_entity-zeile
         product   = ls_entity-product
         prod_name = ls_entity-prodname
@@ -107,8 +112,6 @@ CLASS lhc_Item IMPLEMENTATION.
         exp_date  = ls_entity-expdate
         notif_id  = ls_entity-notifid
         tr_response = ls_entity-trresponse
-        mat_doc   = ls_entity-matdoc
-        mvt_type  = ls_entity-mvttype
         sr_number = ls_entity-srnumber
         created_date = sy-datum
         created_time = sy-uzeit
@@ -130,7 +133,7 @@ CLASS lhc_Item IMPLEMENTATION.
     LOOP AT entities INTO DATA(ls_entity).
       " Read base data
       SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @DATA(ls_dttsit2)
-        WHERE tran_id = @ls_entity-tranid AND item_no = @ls_entity-itemno.
+        WHERE doc_year = @ls_entity-docyear AND mat_doc = @ls_entity-matdoc AND mvt_type = @ls_entity-mvttype AND item_no = @ls_entity-itemno.
       IF sy-subrc = 0.
         " Map incoming edits
         IF ls_entity-%control-gtin = if_abap_behv=>mk-on.
@@ -157,7 +160,7 @@ CLASS lhc_Item IMPLEMENTATION.
         ls_dttsit2-changed_by = sy-uname.
 
         APPEND ls_dttsit2 TO lcl_buffer=>mt_update.
-        APPEND VALUE #( tranid = ls_entity-tranid itemno = ls_entity-itemno ) TO lt_keys_to_reprocess.
+        APPEND VALUE #( docyear = ls_entity-docyear matdoc = ls_entity-matdoc mvttype = ls_entity-mvttype itemno = ls_entity-itemno ) TO lt_keys_to_reprocess.
       ENDIF.
     ENDLOOP.
 
@@ -169,7 +172,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
        " Merge the reprocessed results into the global update buffer
        LOOP AT lt_processed_updates INTO DATA(ls_proc).
-         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
+         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY doc_year = ls_proc-doc_year mat_doc = ls_proc-mat_doc mvt_type = ls_proc-mvt_type item_no = ls_proc-item_no.
          IF sy-subrc = 0.
             <fs_buf>-notif_id = ls_proc-notif_id.
             <fs_buf>-tr_response = ls_proc-tr_response.
@@ -195,14 +198,16 @@ CLASS lhc_Item IMPLEMENTATION.
     IF keys IS NOT INITIAL.
       SELECT * FROM zr_mm_dtts_cockpit
         FOR ALL ENTRIES IN @keys
-        WHERE tranid = @keys-tranid
+        WHERE docyear = @keys-docyear
+          AND matdoc = @keys-matdoc
+          AND mvttype = @keys-mvttype
           AND itemno = @keys-itemno
         INTO CORRESPONDING FIELDS OF TABLE @lt_read_data.
 
       IF sy-subrc = 0.
         " Map DB results to the expected RESULT structure
         LOOP AT lt_read_data INTO DATA(ls_read_data).
-          INSERT VALUE #( %tky = VALUE #( tranid = ls_read_data-tranid itemno = ls_read_data-itemno )
+          INSERT VALUE #( %tky = VALUE #( docyear = ls_read_data-docyear matdoc = ls_read_data-matdoc mvttype = ls_read_data-mvttype itemno = ls_read_data-itemno )
                           %data = CORRESPONDING #( ls_read_data ) ) INTO TABLE result.
         ENDLOOP.
       ENDIF.
@@ -218,7 +223,7 @@ CLASS lhc_Item IMPLEMENTATION.
      " Triggered manually via UI Button
      DATA lt_keys_to_reprocess TYPE tt_keys.
      LOOP AT keys INTO DATA(ls_key).
-       APPEND VALUE #( tranid = ls_key-tranid itemno = ls_key-itemno ) TO lt_keys_to_reprocess.
+       APPEND VALUE #( docyear = ls_key-docyear matdoc = ls_key-matdoc mvttype = ls_key-mvttype itemno = ls_key-itemno ) TO lt_keys_to_reprocess.
      ENDLOOP.
 
      DATA lt_processed_updates TYPE tt_dttsit2.
@@ -228,7 +233,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
      " Apply API updates safely into global buffer for the saver
      LOOP AT lt_processed_updates INTO DATA(ls_proc).
-         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
+         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY doc_year = ls_proc-doc_year mat_doc = ls_proc-mat_doc mvt_type = ls_proc-mvt_type item_no = ls_proc-item_no.
          IF sy-subrc = 0.
             <fs_buf>-notif_id = ls_proc-notif_id.
             <fs_buf>-tr_response = ls_proc-tr_response.
@@ -254,14 +259,19 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD execute_reprocess.
-    " 1. Group by TRANID
-    DATA: lt_tran_ids TYPE TABLE OF ty_key.
+    " 1. Group by TRANID (or mat_doc since tran_id is now secondary)
+    " We will group by the combination of mat_doc and doc_year which essentially maps to the transaction
+    TYPES: BEGIN OF ty_header_key,
+             docyear TYPE mjahr,
+             matdoc TYPE mblnr,
+           END OF ty_header_key.
+    DATA: lt_header_keys TYPE TABLE OF ty_header_key.
 
     LOOP AT it_keys INTO DATA(ls_key).
-      APPEND VALUE #( tranid = ls_key-tranid ) TO lt_tran_ids.
+      APPEND VALUE #( docyear = ls_key-docyear matdoc = ls_key-matdoc ) TO lt_header_keys.
     ENDLOOP.
-    SORT lt_tran_ids BY tranid.
-    DELETE ADJACENT DUPLICATES FROM lt_tran_ids COMPARING tranid.
+    SORT lt_header_keys BY docyear matdoc.
+    DELETE ADJACENT DUPLICATES FROM lt_header_keys.
 
     DATA: lt_header  TYPE TABLE OF zmm_sst_dtts_hdr,
           lt_items   TYPE TABLE FOR READ RESULT zr_mm_dtts_cockpit.
@@ -279,22 +289,33 @@ CLASS lhc_Item IMPLEMENTATION.
                    <lt_products> TYPE ANY TABLE,
                    <lt_resp_products> TYPE ANY TABLE.
 
-    " Process Each TRAN_ID Group
-    LOOP AT lt_tran_ids INTO DATA(ls_tran_id).
+    " Process Each Header Group
+    LOOP AT lt_header_keys INTO DATA(ls_hdr_key).
       CLEAR: lt_header, lt_items.
 
-      SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
-        WHERE tran_id = @ls_tran_id-tranid.
-
-      " Read from the local transactional buffer to get newly edited data (not stale DB data)
+      " Assuming header table needs a way to link back, or we map through items
+      " For this logic we will read items first, then fetch header if a tran_id exists
       READ ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
         ENTITY Item
-        ALL FIELDS WITH VALUE #( FOR key IN it_keys WHERE ( tranid = ls_tran_id-tranid )
-                                 ( tranid = key-tranid itemno = key-itemno ) )
+        ALL FIELDS WITH VALUE #( FOR key IN it_keys WHERE ( docyear = ls_hdr_key-docyear AND matdoc = ls_hdr_key-matdoc )
+                                 ( docyear = key-docyear matdoc = key-matdoc mvttype = key-mvttype itemno = key-itemno ) )
         RESULT lt_items.
 
-      IF lt_header IS NOT INITIAL AND lt_items IS NOT INITIAL.
-        DATA(lv_operation) = lt_header[ 1 ]-operation.
+      IF lt_items IS NOT INITIAL.
+        DATA(lv_tran_id) = lt_items[ 1 ]-tranid.
+
+        IF lv_tran_id IS NOT INITIAL.
+          SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
+            WHERE tran_id = @lv_tran_id.
+        ENDIF.
+
+        " Determine operation from item directly if header operation is initial
+        DATA lv_operation TYPE string.
+        IF lt_header IS NOT INITIAL AND lt_header[ 1 ]-operation IS NOT INITIAL.
+          lv_operation = lt_header[ 1 ]-operation.
+        ELSE.
+          lv_operation = lt_items[ 1 ]-operation.
+        ENDIF.
 
         " Dynamically Load API configuration
         SELECT SINGLE * FROM zmm_dtts_api_con INTO @wa_zmm_dtts_api_con
@@ -320,13 +341,13 @@ CLASS lhc_Item IMPLEMENTATION.
                    " Read from updated buffer if available, fallback to header DB
                    IF lt_items[ 1 ]-frm_gln IS NOT INITIAL.
                      <lv_fromgln> = lt_items[ 1 ]-frm_gln.
-                   ELSE.
+                   ELSEIF lt_header IS NOT INITIAL.
                      <lv_fromgln> = lt_header[ 1 ]-frm_gln.
                    ENDIF.
 
                    IF lt_items[ 1 ]-to_gln IS NOT INITIAL.
                      <lv_authgln> = lt_items[ 1 ]-to_gln.
-                   ELSE.
+                   ELSEIF lt_header IS NOT INITIAL.
                      <lv_authgln> = lt_header[ 1 ]-to_gln.
                    ENDIF.
                 ENDIF.
@@ -426,7 +447,9 @@ CLASS lhc_Item IMPLEMENTATION.
 
                                DATA ls_processed_dttsit2 TYPE zmm_sst_dttsit2.
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item>-tranid.
+                               ls_processed_dttsit2-doc_year = <fs_item>-docyear.
+                               ls_processed_dttsit2-mat_doc = <fs_item>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item>-mvttype.
                                ls_processed_dttsit2-item_no = <fs_item>-itemno.
                                ls_processed_dttsit2-notif_id = <lv_notif_id>.
                                ls_processed_dttsit2-tr_response = <r_rc>.
@@ -458,7 +481,9 @@ CLASS lhc_Item IMPLEMENTATION.
                " Application fault mapping
                LOOP AT lt_items ASSIGNING <fs_item>.
                  DATA ls_err_app TYPE zmm_sst_dttsit2.
-                 ls_err_app-tran_id = <fs_item>-tranid.
+                 ls_err_app-doc_year = <fs_item>-docyear.
+                 ls_err_app-mat_doc = <fs_item>-matdoc.
+                 ls_err_app-mvt_type = <fs_item>-mvttype.
                  ls_err_app-item_no = <fs_item>-itemno.
                  ls_err_app-prod_stat = 'ERROR'.
                  ls_err_app-trans_stat = 'API Application Fault'.
@@ -471,7 +496,9 @@ CLASS lhc_Item IMPLEMENTATION.
                " System fault mapping
                LOOP AT lt_items ASSIGNING <fs_item>.
                  DATA ls_err_sys TYPE zmm_sst_dttsit2.
-                 ls_err_sys-tran_id = <fs_item>-tranid.
+                 ls_err_sys-doc_year = <fs_item>-docyear.
+                 ls_err_sys-mat_doc = <fs_item>-matdoc.
+                 ls_err_sys-mvt_type = <fs_item>-mvttype.
                  ls_err_sys-item_no = <fs_item>-itemno.
                  ls_err_sys-prod_stat = 'ERROR'.
                  ls_err_sys-trans_stat = 'API System Fault'.
@@ -484,7 +511,9 @@ CLASS lhc_Item IMPLEMENTATION.
                " Generic fault mapping
                LOOP AT lt_items ASSIGNING <fs_item>.
                  DATA ls_err_root TYPE zmm_sst_dttsit2.
-                 ls_err_root-tran_id = <fs_item>-tranid.
+                 ls_err_root-doc_year = <fs_item>-docyear.
+                 ls_err_root-mat_doc = <fs_item>-matdoc.
+                 ls_err_root-mvt_type = <fs_item>-mvttype.
                  ls_err_root-item_no = <fs_item>-itemno.
                  ls_err_root-prod_stat = 'ERROR'.
                  ls_err_root-trans_stat = 'Generic API Error'.
@@ -507,15 +536,21 @@ CLASS lhc_Item IMPLEMENTATION.
     LOOP AT keys INTO DATA(ls_key).
       DATA(ls_param) = ls_key-%param.
 
-      DATA lv_tran_id TYPE ztran_id.
+      DATA lv_doc_year TYPE mjahr.
+      DATA lv_mat_doc TYPE mblnr.
+      DATA lv_mvt_type TYPE bwart.
       DATA lv_item_no TYPE numc4.
 
       " Call number range or custom logic to generate IDs
-      lv_tran_id = 'NEW_TRAN_ID'.
+      lv_doc_year = sy-datum(4).
+      lv_mat_doc = 'NEW_MAT_DOC'.
+      lv_mvt_type = '101'.
       lv_item_no = '0001'.
 
       APPEND VALUE #( %cid = ls_key-%cid
-                      tranid = lv_tran_id
+                      docyear = lv_doc_year
+                      matdoc = lv_mat_doc
+                      mvttype = lv_mvt_type
                       itemno = lv_item_no
                       gtin = ls_param-gtin
                       prodqty = ls_param-prod_qty
@@ -529,7 +564,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      CREATE FIELDS ( tranid itemno gtin prodqty batch expdate prodstat createddate createdtime createdby )
+      CREATE FIELDS ( docyear matdoc mvttype itemno gtin prodqty batch expdate prodstat createddate createdtime createdby )
       WITH lt_create
       MAPPED DATA(ls_mapped)
       FAILED DATA(ls_failed)

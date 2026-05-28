@@ -13,7 +13,7 @@ authorization master ( instance )
   update ( features : instance ); // Only non-success can be updated
   delete;
 
-  field ( readonly ) mandt, tranid, itemno, prodstat, transstat, notifid;
+  field ( readonly ) mandt, docyear, matdoc, mvttype, itemno, prodstat, transstat, notifid, tranid;
 
   // Actions
   action ( features : instance ) reprocess result [1] $self;
@@ -30,8 +30,11 @@ authorization master ( instance )
   mapping for zmm_sst_dtts_itm
   {
     mandt = mandt;
-    tranid = tran_id;
+    docyear = doc_year;
+    matdoc = mat_doc;
+    mvttype = mvt_type;
     itemno = item_no;
+    tranid = tran_id;
     zeile = zeile;
     product = product;
     prodname = prod_name;
@@ -42,8 +45,6 @@ authorization master ( instance )
     expdate = exp_date;
     notifid = notif_id;
     trresponse = tr_response;
-    matdoc = mat_doc;
-    mvttype = mvt_type;
     srnumber = sr_number;
     createddate = created_date;
     createdtime = created_time;
