@@ -5,6 +5,15 @@ ENDCLASS.
 CLASS zcl_mm_dtts_cockpit_bdef IMPLEMENTATION.
 ENDCLASS.
 
+" Global buffer to hold unmanaged changes for the save sequence
+CLASS lcl_buffer DEFINITION.
+  PUBLIC SECTION.
+    CLASS-DATA: mt_create TYPE TABLE OF zmm_sst_dttsit2,
+                mt_update TYPE TABLE OF zmm_sst_dttsit2.
+ENDCLASS.
+CLASS lcl_buffer IMPLEMENTATION.
+ENDCLASS.
+
 CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PRIVATE SECTION.
 
@@ -33,10 +42,7 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
       IMPORTING keys FOR ACTION Item~reprocess RESULT result.
 
     METHODS createWithPopup FOR MODIFY
-      IMPORTING keys FOR ACTION Item~createWithPopup.
-
-    METHODS Prepare FOR MODIFY
-      IMPORTING keys FOR ACTION Item~Prepare.
+      IMPORTING keys FOR ACTION Item~createWithPopup RESULT result.
 
     " ---------------------------------------------------------------------
     " Helper Methods for Request/Response
@@ -53,7 +59,8 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS get_error_description IMPORTING p_error_code TYPE char5
                                   EXPORTING p_description TYPE char255.
 
-    METHODS execute_reprocess IMPORTING it_keys TYPE TABLE FOR ACTION IMPORT zr_mm_dtts_cockpit~reprocess.
+    METHODS execute_reprocess IMPORTING it_keys TYPE TABLE FOR ACTION IMPORT zr_mm_dtts_cockpit~reprocess
+                              EXPORTING et_update_buffer TYPE ANY TABLE.
 
 ENDCLASS.
 
@@ -77,7 +84,7 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD create.
-    DATA: lt_dttsit2 TYPE TABLE OF zmm_sst_dttsit2.
+    " Unmanaged create logic mapped to buffer
     LOOP AT entities INTO DATA(ls_entity).
       DATA(ls_dttsit2) = VALUE zmm_sst_dttsit2(
         mandt     = sy-mandt
@@ -105,19 +112,20 @@ CLASS lhc_Item IMPLEMENTATION.
         frm_gln = ls_entity-frm_gln
         to_gln = ls_entity-to_gln
       ).
-      APPEND ls_dttsit2 TO lt_dttsit2.
+      APPEND ls_dttsit2 TO lcl_buffer=>mt_create.
     ENDLOOP.
-    IF lt_dttsit2 IS NOT INITIAL.
-      INSERT zmm_sst_dttsit2 FROM TABLE lt_dttsit2.
-    ENDIF.
   ENDMETHOD.
 
   METHOD update.
-    DATA lt_dttsit2 TYPE TABLE OF zmm_sst_dttsit2.
+    " Unmanaged update logic captured to buffer
+    DATA lt_keys_to_reprocess TYPE TABLE FOR ACTION IMPORT zr_mm_dtts_cockpit~reprocess.
+
     LOOP AT entities INTO DATA(ls_entity).
+      " Read base data
       SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @DATA(ls_dttsit2)
         WHERE tran_id = @ls_entity-tranid AND item_no = @ls_entity-itemno.
       IF sy-subrc = 0.
+        " Map incoming edits
         IF ls_entity-%control-gtin = if_abap_behv=>mk-on.
           ls_dttsit2-gtin = ls_entity-gtin.
         ENDIF.
@@ -137,35 +145,36 @@ CLASS lhc_Item IMPLEMENTATION.
           ls_dttsit2-to_gln = ls_entity-to_gln.
         ENDIF.
 
-        " Capture fields updated during auto-reprocess
-        IF ls_entity-%control-prodstat = if_abap_behv=>mk-on.
-          ls_dttsit2-prod_stat = ls_entity-prodstat.
-        ENDIF.
-        IF ls_entity-%control-transstat = if_abap_behv=>mk-on.
-          ls_dttsit2-trans_stat = ls_entity-transstat.
-        ENDIF.
-        IF ls_entity-%control-notifid = if_abap_behv=>mk-on.
-          ls_dttsit2-notif_id = ls_entity-notifid.
-        ENDIF.
-        IF ls_entity-%control-trresponse = if_abap_behv=>mk-on.
-          ls_dttsit2-tr_response = ls_entity-trresponse.
-        ENDIF.
-        IF ls_entity-%control-changeddate = if_abap_behv=>mk-on.
-          ls_dttsit2-changed_date = ls_entity-changeddate.
-        ENDIF.
-        IF ls_entity-%control-changedtime = if_abap_behv=>mk-on.
-          ls_dttsit2-changed_time = ls_entity-changedtime.
-        ENDIF.
-        IF ls_entity-%control-changedby = if_abap_behv=>mk-on.
-          ls_dttsit2-changed_by = ls_entity-changedby.
-        ENDIF.
+        ls_dttsit2-changed_date = sy-datum.
+        ls_dttsit2-changed_time = sy-uzeit.
+        ls_dttsit2-changed_by = sy-uname.
 
-        APPEND ls_dttsit2 TO lt_dttsit2.
+        APPEND ls_dttsit2 TO lcl_buffer=>mt_update.
+        APPEND VALUE #( %tky = ls_entity-%tky ) TO lt_keys_to_reprocess.
       ENDIF.
     ENDLOOP.
 
-    IF lt_dttsit2 IS NOT INITIAL.
-      MODIFY zmm_sst_dttsit2 FROM TABLE lt_dttsit2.
+    " Execute API Reprocessing for modified keys safely without EML MODIFY loop
+    IF lt_keys_to_reprocess IS NOT INITIAL.
+       DATA lt_processed_updates TYPE TABLE OF zmm_sst_dttsit2.
+       me->execute_reprocess( EXPORTING it_keys = lt_keys_to_reprocess
+                              IMPORTING et_update_buffer = lt_processed_updates ).
+
+       " Merge the reprocessed results into the global update buffer
+       LOOP AT lt_processed_updates INTO DATA(ls_proc).
+         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
+         IF sy-subrc = 0.
+            <fs_buf>-notif_id = ls_proc-notif_id.
+            <fs_buf>-tr_response = ls_proc-tr_response.
+            <fs_buf>-prod_stat = ls_proc-prod_stat.
+            <fs_buf>-trans_stat = ls_proc-trans_stat.
+            <fs_buf>-changed_date = ls_proc-changed_date.
+            <fs_buf>-changed_time = ls_proc-changed_time.
+            <fs_buf>-changed_by = ls_proc-changed_by.
+         ELSE.
+            APPEND ls_proc TO lcl_buffer=>mt_update.
+         ENDIF.
+       ENDLOOP.
     ENDIF.
   ENDMETHOD.
 
@@ -178,24 +187,28 @@ CLASS lhc_Item IMPLEMENTATION.
   METHOD lock.
   ENDMETHOD.
 
-  METHOD Prepare.
-    " Trigger Auto-Reprocess during the Activate (Save) sequence from Draft.
-    " PREPARE runs before SAVE. It executes on the active buffer which contains the corrected data from Draft.
-
-    DATA lt_keys_to_reprocess TYPE TABLE FOR ACTION IMPORT zr_mm_dtts_cockpit~reprocess.
-
-    LOOP AT keys INTO DATA(ls_key).
-       APPEND VALUE #( %tky = ls_key-%tky ) TO lt_keys_to_reprocess.
-    ENDLOOP.
-
-    IF lt_keys_to_reprocess IS NOT INITIAL.
-       me->execute_reprocess( it_keys = lt_keys_to_reprocess ).
-    ENDIF.
-  ENDMETHOD.
-
   METHOD reprocess.
      " Triggered manually via UI Button
-     me->execute_reprocess( it_keys = keys ).
+     DATA lt_processed_updates TYPE TABLE OF zmm_sst_dttsit2.
+
+     me->execute_reprocess( EXPORTING it_keys = keys
+                            IMPORTING et_update_buffer = lt_processed_updates ).
+
+     " Apply API updates safely into global buffer for the saver
+     LOOP AT lt_processed_updates INTO DATA(ls_proc).
+         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
+         IF sy-subrc = 0.
+            <fs_buf>-notif_id = ls_proc-notif_id.
+            <fs_buf>-tr_response = ls_proc-tr_response.
+            <fs_buf>-prod_stat = ls_proc-prod_stat.
+            <fs_buf>-trans_stat = ls_proc-trans_stat.
+            <fs_buf>-changed_date = ls_proc-changed_date.
+            <fs_buf>-changed_time = ls_proc-changed_time.
+            <fs_buf>-changed_by = ls_proc-changed_by.
+         ELSE.
+            APPEND ls_proc TO lcl_buffer=>mt_update.
+         ENDIF.
+     ENDLOOP.
 
      " Return result mapping
      READ ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
@@ -235,7 +248,10 @@ CLASS lhc_Item IMPLEMENTATION.
     FIELD-SYMBOLS: <fs_request> TYPE any,
                    <fs_response> TYPE any,
                    <lt_products> TYPE ANY TABLE,
-                   <lt_resp_products> TYPE ANY TABLE.
+                   <lt_resp_products> TYPE ANY TABLE,
+                   <lt_return_buffer> TYPE STANDARD TABLE.
+
+    ASSIGN et_update_buffer TO <lt_return_buffer>.
 
     " Process Each TRAN_ID Group
     LOOP AT lt_tran_ids INTO DATA(ls_tran_id).
@@ -244,7 +260,7 @@ CLASS lhc_Item IMPLEMENTATION.
       SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
         WHERE tran_id = @ls_tran_id-tranid.
 
-      " IMPORTANT: Read from the local transactional buffer to get newly edited data (not stale DB data)
+      " Read from the local transactional buffer to get newly edited data (not stale DB data)
       READ ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
         ENTITY Item
         ALL FIELDS WITH VALUE #( FOR key IN it_keys WHERE ( tranid = ls_tran_id-tranid )
@@ -346,7 +362,7 @@ CLASS lhc_Item IMPLEMENTATION.
                   output = <fs_response>.
 
               " -------------------------------------------------------------
-              " Parse response, modify item properties in buffer
+              " Parse response, prepare updates directly for global buffer
               " -------------------------------------------------------------
               DATA lv_all_success TYPE abap_bool VALUE abap_true.
               CASE lv_operation.
@@ -370,21 +386,29 @@ CLASS lhc_Item IMPLEMENTATION.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
                              IF lv_item_gtin = lv_resp_gtin AND <fs_item>-batch = <r_bn>.
-                               <fs_item>-notifid = <lv_notif_id>.
-                               <fs_item>-trresponse = <r_rc>.
+
+                               DATA ls_processed_dttsit2 TYPE zmm_sst_dttsit2.
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item>-tranid.
+                               ls_processed_dttsit2-item_no = <fs_item>-itemno.
+                               ls_processed_dttsit2-notif_id = <lv_notif_id>.
+                               ls_processed_dttsit2-tr_response = <r_rc>.
+
                                IF <r_rc> = '00000'.
-                                 <fs_item>-prodstat = 'SUCCESS'.
+                                 ls_processed_dttsit2-prod_stat = 'SUCCESS'.
                                ELSE.
-                                 <fs_item>-prodstat = 'ERROR'.
+                                 ls_processed_dttsit2-prod_stat = 'ERROR'.
                                  lv_all_success = abap_false.
                                ENDIF.
 
                                DATA lv_desc TYPE char255.
                                me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc> ) IMPORTING p_description = lv_desc ).
-                               <fs_item>-transstat = lv_desc.
-                               <fs_item>-changeddate = sy-datum.
-                               <fs_item>-changedtime = sy-uzeit.
-                               <fs_item>-changedby = sy-uname.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO <lt_return_buffer>.
                              ENDIF.
                            ENDLOOP.
                         ENDLOOP.
@@ -393,32 +417,45 @@ CLASS lhc_Item IMPLEMENTATION.
                   ENDIF.
               ENDCASE.
 
-              " -------------------------------------------------------------
-              " Apply changes to transactional buffer using EML
-              " Preserve the %is_draft flag by using %tky from the input structure
-              " -------------------------------------------------------------
-              LOOP AT lt_items INTO DATA(ls_mod_item).
-                MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
-                  ENTITY Item
-                  UPDATE FIELDS ( prodstat transstat notifid trresponse changeddate changedtime changedby )
-                  WITH VALUE #( ( %tky = ls_mod_item-%tky
-                                  prodstat = ls_mod_item-prodstat
-                                  transstat = ls_mod_item-transstat
-                                  notifid = ls_mod_item-notifid
-                                  trresponse = ls_mod_item-trresponse
-                                  changeddate = ls_mod_item-changeddate
-                                  changedtime = ls_mod_item-changedtime
-                                  changedby = ls_mod_item-changedby ) )
-                  FAILED DATA(ls_failed_eml)
-                  REPORTED DATA(ls_reported_eml).
-              ENDLOOP.
-
             CATCH cx_ai_application_fault INTO DATA(lx_app_fault).
-               " Error handling mapped to EML Buffer Update
+               " Application fault mapping
+               LOOP AT lt_items ASSIGNING <fs_item>.
+                 DATA ls_err_app TYPE zmm_sst_dttsit2.
+                 ls_err_app-tran_id = <fs_item>-tranid.
+                 ls_err_app-item_no = <fs_item>-itemno.
+                 ls_err_app-prod_stat = 'ERROR'.
+                 ls_err_app-trans_stat = 'API Application Fault'.
+                 ls_err_app-changed_date = sy-datum.
+                 ls_err_app-changed_time = sy-uzeit.
+                 ls_err_app-changed_by = sy-uname.
+                 APPEND ls_err_app TO <lt_return_buffer>.
+               ENDLOOP.
             CATCH cx_ai_system_fault INTO DATA(lx_sys).
-               " Error handling mapped to EML Buffer Update
+               " System fault mapping
+               LOOP AT lt_items ASSIGNING <fs_item>.
+                 DATA ls_err_sys TYPE zmm_sst_dttsit2.
+                 ls_err_sys-tran_id = <fs_item>-tranid.
+                 ls_err_sys-item_no = <fs_item>-itemno.
+                 ls_err_sys-prod_stat = 'ERROR'.
+                 ls_err_sys-trans_stat = 'API System Fault'.
+                 ls_err_sys-changed_date = sy-datum.
+                 ls_err_sys-changed_time = sy-uzeit.
+                 ls_err_sys-changed_by = sy-uname.
+                 APPEND ls_err_sys TO <lt_return_buffer>.
+               ENDLOOP.
             CATCH cx_root INTO DATA(lx_root).
-               " Error handling mapped to EML Buffer Update
+               " Generic fault mapping
+               LOOP AT lt_items ASSIGNING <fs_item>.
+                 DATA ls_err_root TYPE zmm_sst_dttsit2.
+                 ls_err_root-tran_id = <fs_item>-tranid.
+                 ls_err_root-item_no = <fs_item>-itemno.
+                 ls_err_root-prod_stat = 'ERROR'.
+                 ls_err_root-trans_stat = 'Generic API Error'.
+                 ls_err_root-changed_date = sy-datum.
+                 ls_err_root-changed_time = sy-uzeit.
+                 ls_err_root-changed_by = sy-uname.
+                 APPEND ls_err_root TO <lt_return_buffer>.
+               ENDLOOP.
           ENDTRY.
         ENDIF.
       ENDIF.
@@ -427,7 +464,6 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD createWithPopup.
-    " Generate new Entity via Factory Action mapped to EML Buffer Update
     DATA: lt_create TYPE TABLE FOR CREATE zr_mm_dtts_cockpit.
 
     LOOP AT keys INTO DATA(ls_key).
@@ -436,7 +472,6 @@ CLASS lhc_Item IMPLEMENTATION.
       DATA lv_tran_id TYPE ztran_id.
       DATA lv_item_no TYPE numc4.
 
-      " Call number range or custom logic to generate IDs
       lv_tran_id = 'NEW_TRAN_ID'.
       lv_item_no = '0001'.
 
@@ -461,8 +496,17 @@ CLASS lhc_Item IMPLEMENTATION.
       FAILED DATA(ls_failed)
       REPORTED DATA(ls_reported).
 
-    " Return mapped keys
     mapped-item = ls_mapped-item.
+
+    " Return result mapped back to popup entity
+    READ ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
+      ENTITY Item
+      ALL FIELDS WITH CORRESPONDING ls_mapped-item
+      RESULT DATA(lt_created_items).
+
+    result = VALUE #( FOR ls_created IN lt_created_items
+                      ( %tky = ls_created-%tky
+                        %param = ls_created ) ).
   ENDMETHOD.
 
   " -------------------------------------------------------------
@@ -476,7 +520,6 @@ CLASS lhc_Item IMPLEMENTATION.
           lv_month(2) TYPE c,
           lv_day(2)   TYPE c.
 
-    " Format GTIN
     p_gtin_out = p_gtin_in.
     CONDENSE p_gtin_out NO-GAPS.
     lv_len = strlen( p_gtin_out ).
@@ -484,7 +527,6 @@ CLASS lhc_Item IMPLEMENTATION.
       p_gtin_out = |{ p_gtin_out WIDTH = 14 PAD = '0' ALIGN = RIGHT }|.
     ENDIF.
 
-    " Format Quantity
     p_quantity_out = p_quantity_in.
     IF p_quantity_out CS '.'.
       SPLIT p_quantity_out AT '.' INTO lv_qty_int lv_qty_dec.
@@ -493,11 +535,9 @@ CLASS lhc_Item IMPLEMENTATION.
     p_quantity_out = |{ p_quantity_out ALPHA = OUT }|.
     CONDENSE p_quantity_out NO-GAPS.
 
-    " Format Batch
     p_batch_out = p_batch_in.
     CONDENSE p_batch_out NO-GAPS.
 
-    " Format Expiry Date
     CLEAR p_exp_date_out.
     IF p_exp_date_in IS NOT INITIAL.
       lv_year  = p_exp_date_in+0(4).
@@ -543,13 +583,23 @@ CLASS lsc_ZR_MM_DTTS_COCKPIT IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD save.
-     " Unmanaged Save logic strictly mapped to zmm_sst_dttsit2
-     " Because we bypass the global transactional buffer for simplification here,
-     " we assume that the modifications performed via EML IN LOCAL MODE or in the update
-     " methods execute direct SQL commands to maintain the actual persistency layer.
+     " Unmanaged Save: persist global buffer to physical database tables
+
+     " Insert new records
+     IF lcl_buffer=>mt_create IS NOT INITIAL.
+       INSERT zmm_sst_dttsit2 FROM TABLE lcl_buffer=>mt_create.
+     ENDIF.
+
+     " Update modified/reprocessed records
+     IF lcl_buffer=>mt_update IS NOT INITIAL.
+       MODIFY zmm_sst_dttsit2 FROM TABLE lcl_buffer=>mt_update.
+     ENDIF.
   ENDMETHOD.
 
   METHOD cleanup.
+     " Clear global memory buffers
+     CLEAR lcl_buffer=>mt_create.
+     CLEAR lcl_buffer=>mt_update.
   ENDMETHOD.
 
   METHOD cleanup_finalize.
