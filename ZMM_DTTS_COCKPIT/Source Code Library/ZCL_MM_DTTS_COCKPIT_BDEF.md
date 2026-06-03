@@ -70,10 +70,11 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
     METHODS execute_reprocess IMPORTING it_keys TYPE tt_keys
                               EXPORTING et_update_buffer TYPE tt_dttsit2.
-
-    METHODS populate_full_error_record IMPORTING is_item TYPE STRUCTURE FOR READ RESULT zr_mm_dtts_cockpit\\Item
+types tt_is_item TYPE STRUCTURE FOR READ RESULT zr_mm_dtts_cockpit\\Item .
+types ty_zmm_sst_dtts_hdr type table of zmm_sst_dtts_hdr.
+    METHODS populate_full_error_record IMPORTING is_item type tt_is_item
                                                  iv_trans_stat TYPE string
-                                                 it_header TYPE ANY TABLE
+                                                 it_header TYPE ty_zmm_sst_dtts_hdr
                                        RETURNING VALUE(rs_err) TYPE zmm_sst_dttsit2.
 
 ENDCLASS.
@@ -104,8 +105,8 @@ CLASS lhc_Item IMPLEMENTATION.
         mandt     = sy-mandt
         mat_doc   = ls_entity-matdoc
         mvt_type  = ls_entity-mvttype
-        item_no   = ls_entity-itemno
-        tran_id   = ls_entity-tranid
+        item_no   = ls_entity-item_no
+        tran_id   = ls_entity-tran_id
         zeile     = ls_entity-zeile
         product   = ls_entity-product
         prod_name = ls_entity-prodname
@@ -140,21 +141,21 @@ CLASS lhc_Item IMPLEMENTATION.
 
       " Read base data using logical keys from CDS view
       SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_tran_id)
-        WHERE docyear = @ls_entity-docyear AND matdoc = @ls_entity-matdoc AND mvttype = @ls_entity-mvttype AND itemno = @ls_entity-itemno.
+        WHERE doc_year = @ls_entity-doc_year AND matdoc = @ls_entity-matdoc AND mvttype = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
 
       IF sy-subrc = 0.
         SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @DATA(ls_dttsit2)
-          WHERE tran_id = @lv_tran_id AND item_no = @ls_entity-itemno.
+          WHERE tran_id = @lv_tran_id AND item_no = @ls_entity-item_no.
 
         IF sy-subrc <> 0.
           " If not in buffer table, read full base from CDS to initialize
           SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_base)
-            WHERE docyear = @ls_entity-docyear AND matdoc = @ls_entity-matdoc AND mvttype = @ls_entity-mvttype AND itemno = @ls_entity-itemno.
+            WHERE doc_year = @ls_entity-doc_year AND matdoc = @ls_entity-matdoc AND mvttype = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
 
           IF sy-subrc = 0.
             ls_dttsit2-mandt = sy-mandt.
-            ls_dttsit2-tran_id = ls_base-tranid.
-            ls_dttsit2-item_no = ls_base-itemno.
+            ls_dttsit2-tran_id = ls_base-tran_id.
+            ls_dttsit2-item_no = ls_base-item_no.
             ls_dttsit2-mat_doc = ls_base-matdoc.
             ls_dttsit2-mvt_type = ls_base-mvttype.
             ls_dttsit2-zeile = ls_base-zeile.
@@ -176,7 +177,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
             " Fetch Header Fields
             SELECT SINGLE operation, frm_gln, to_gln FROM zmm_sst_dtts_hdr INTO (@ls_dttsit2-operation, @ls_dttsit2-frm_gln, @ls_dttsit2-to_gln)
-              WHERE mat_doc = @ls_entity-matdoc AND doc_yr = @ls_entity-docyear AND mvt_type = @ls_entity-mvttype.
+              WHERE mat_doc = @ls_entity-matdoc AND doc_yr = @ls_entity-doc_year AND mvt_type = @ls_entity-mvttype.
 
             APPEND ls_dttsit2 TO lcl_buffer=>mt_create.
           ENDIF.
@@ -214,7 +215,7 @@ CLASS lhc_Item IMPLEMENTATION.
           APPEND ls_dttsit2 TO lcl_buffer=>mt_update.
         ENDIF.
 
-        APPEND VALUE #( docyear = ls_entity-docyear matdoc = ls_entity-matdoc mvttype = ls_entity-mvttype itemno = ls_entity-itemno ) TO lt_keys_to_reprocess.
+        APPEND VALUE #( docyear = ls_entity-doc_year matdoc = ls_entity-matdoc mvttype = ls_entity-mvttype itemno = ls_entity-item_no ) TO lt_keys_to_reprocess.
       ENDIF.
     ENDLOOP.
 
@@ -290,15 +291,15 @@ CLASS lhc_Item IMPLEMENTATION.
     IF keys IS NOT INITIAL.
       SELECT * FROM zr_mm_dtts_cockpit
         FOR ALL ENTRIES IN @keys
-        WHERE docyear = @keys-docyear
+        WHERE doc_year = @keys-doc_year
           AND matdoc = @keys-matdoc
           AND mvttype = @keys-mvttype
-          AND itemno = @keys-itemno
+          AND item_no = @keys-item_no
         INTO CORRESPONDING FIELDS OF TABLE @lt_read_data.
 
       IF sy-subrc = 0.
         LOOP AT lt_read_data INTO DATA(ls_read_data).
-          INSERT VALUE #( %tky = VALUE #( docyear = ls_read_data-docyear matdoc = ls_read_data-matdoc mvttype = ls_read_data-mvttype itemno = ls_read_data-itemno )
+          INSERT VALUE #( %tky = VALUE #( doc_year = ls_read_data-doc_year matdoc = ls_read_data-matdoc mvttype = ls_read_data-mvttype item_no = ls_read_data-item_no )
                           %data = CORRESPONDING #( ls_read_data ) ) INTO TABLE result.
         ENDLOOP.
       ENDIF.
@@ -311,7 +312,7 @@ CLASS lhc_Item IMPLEMENTATION.
   METHOD reprocess.
      DATA lt_keys_to_reprocess TYPE tt_keys.
      LOOP AT keys INTO DATA(ls_key).
-       APPEND VALUE #( docyear = ls_key-docyear matdoc = ls_key-matdoc mvttype = ls_key-mvttype itemno = ls_key-itemno ) TO lt_keys_to_reprocess.
+       APPEND VALUE #( docyear = ls_key-doc_year matdoc = ls_key-matdoc mvttype = ls_key-mvttype itemno = ls_key-item_no ) TO lt_keys_to_reprocess.
      ENDLOOP.
 
      DATA lt_processed_updates TYPE tt_dttsit2.
@@ -361,11 +362,11 @@ CLASS lhc_Item IMPLEMENTATION.
   METHOD populate_full_error_record.
      " Helper to preserve all fields when an API exception occurs so we don't wipe data in ZMM_SST_DTTSIT2
      SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @rs_err
-       WHERE tran_id = @is_item-tranid AND item_no = @is_item-itemno.
+       WHERE tran_id = @is_item-tran_id AND item_no = @is_item-item_no.
 
      rs_err-mandt = sy-mandt.
-     rs_err-tran_id = is_item-tranid.
-     rs_err-item_no = is_item-itemno.
+     rs_err-tran_id = is_item-tran_id.
+     rs_err-item_no = is_item-item_no.
      rs_err-zeile = is_item-zeile.
      rs_err-product = is_item-product.
      rs_err-prod_name = is_item-prodname.
@@ -434,22 +435,28 @@ CLASS lhc_Item IMPLEMENTATION.
 
         " Fetch logical-to-physical tran_id
         SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_t)
-          WHERE docyear = @ls_k-docyear AND matdoc = @ls_k-matdoc AND mvttype = @ls_k-mvttype AND itemno = @ls_k-itemno.
+          WHERE doc_year = @ls_k-docyear AND matdoc = @ls_k-matdoc AND mvttype = @ls_k-mvttype AND item_no = @ls_k-itemno.
 
         READ TABLE lcl_buffer=>mt_create INTO DATA(ls_buf) WITH KEY tran_id = lv_t item_no = ls_k-itemno.
         IF sy-subrc = 0.
-           ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type itemno = item_no tranid = tran_id prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
-           ls_item_st-docyear = ls_k-docyear. " Force mapped key
+           ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type item_no = item_no tran_id = tran_id
+           prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response
+           srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date
+           changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
+           ls_item_st-doc_year = ls_k-docyear. " Force mapped key
            APPEND ls_item_st TO lt_items.
         ELSE.
            READ TABLE lcl_buffer=>mt_update INTO ls_buf WITH KEY tran_id = lv_t item_no = ls_k-itemno.
            IF sy-subrc = 0.
-             ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type itemno = item_no tranid = tran_id prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
-             ls_item_st-docyear = ls_k-docyear.
+             ls_item_st = CORRESPONDING #( ls_buf MAPPING matdoc = mat_doc mvttype = mvt_type item_no = item_no tran_id = tran_id
+             prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response
+             srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date
+             changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
+             ls_item_st-doc_year = ls_k-docyear.
              APPEND ls_item_st TO lt_items.
            ELSE.
              SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_db)
-               WHERE docyear = @ls_k-docyear AND matdoc = @ls_k-matdoc AND mvttype = @ls_k-mvttype AND itemno = @ls_k-itemno.
+               WHERE doc_year = @ls_k-docyear AND matdoc = @ls_k-matdoc AND mvttype = @ls_k-mvttype AND item_no = @ls_k-itemno.
              IF sy-subrc = 0.
                ls_item_st = CORRESPONDING #( ls_db ).
                APPEND ls_item_st TO lt_items.
@@ -588,11 +595,11 @@ CLASS lhc_Item IMPLEMENTATION.
                                " Fetch base data from base table zmm_sst_dtts_itm (or via buffer if exists)
                                " to ensure all fields requested are transferred
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item>-tranid AND item_no = @<fs_item>-itemno.
+                                 WHERE tran_id = @<fs_item>-tran_id AND item_no = @<fs_item>-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item>-tranid.
-                               ls_processed_dttsit2-item_no = <fs_item>-itemno.
+                               ls_processed_dttsit2-tran_id = <fs_item>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item>-item_no.
 
                                " Item Fields (override with any buffered changes if needed, else fallback to ITM)
                                ls_processed_dttsit2-zeile = <fs_item>-zeile.
@@ -678,17 +685,18 @@ CLASS lhc_Item IMPLEMENTATION.
       lv_mvt_type = '101'.
 
       " Randomize item for uniqueness in factory
+          data lv_ran type qfranint .
       CALL FUNCTION 'QF05_RANDOM_INTEGER'
         EXPORTING ran_int_max = 9999 ran_int_min = 1
-        IMPORTING ran_int = DATA(lv_ran).
+        IMPORTING ran_int = lv_ran .
       lv_item_no = CONV numc4( lv_ran ).
 
       APPEND VALUE #( %cid = ls_key-%cid
-                      docyear = lv_doc_year
+                      doc_year = lv_doc_year
                       matdoc = lv_mat_doc
                       mvttype = lv_mvt_type
-                      itemno = lv_item_no
-                      tranid = CONV ztran_id( lv_ts )
+                      item_no = lv_item_no
+                      tran_id = CONV ztran_id( lv_ts )
                       gtin = ls_param-gtin
                       prodqty = ls_param-prod_qty
                       batch = ls_param-batch
@@ -701,7 +709,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      CREATE FIELDS ( docyear matdoc mvttype itemno tranid gtin prodqty batch expdate prodstat createddate createdtime createdby )
+      CREATE FIELDS ( doc_year matdoc mvttype item_no tran_id gtin prodqty batch expdate prodstat createddate createdtime createdby )
       WITH lt_create
       MAPPED DATA(ls_mapped)
       FAILED DATA(ls_failed)
@@ -737,24 +745,40 @@ CLASS lhc_Item IMPLEMENTATION.
     CONDENSE p_batch_out NO-GAPS.
 
     CLEAR p_exp_date_out.
-    DATA lv_clean_date TYPE string.
-    lv_clean_date = p_exp_date_in.
-    REPLACE ALL OCCURRENCES OF '-' IN lv_clean_date WITH ''.
+*    IF p_exp_date_in IS NOT INITIAL.
+*      lv_year  = p_exp_date_in+0(4).
+*      lv_month = p_exp_date_in+4(2).
+*      lv_day   = p_exp_date_in+6(2).
+*      p_exp_date_out = |{ lv_year }-{ lv_month }-{ lv_day }|.
+*    ENDIF.
 
-    IF lv_clean_date IS NOT INITIAL.
-      " Check if it's already in the format YYMMDD
-      IF strlen( lv_clean_date ) = 6.
-         lv_year  = lv_clean_date+0(2).
-         lv_month = lv_clean_date+2(2).
-         lv_day   = lv_clean_date+4(2).
-         p_exp_date_out = |{ lv_year }{ lv_month }{ lv_day }|.
-      ELSE.
-         lv_year  = lv_clean_date+0(4).
-         lv_month = lv_clean_date+4(2).
-         lv_day   = lv_clean_date+6(2).
-         p_exp_date_out = |{ lv_year+2(2) }{ lv_month }{ lv_day }|.
-      ENDIF.
-    ENDIF.
+ DATA lv_clean_date TYPE string.
+
+lv_clean_date = p_exp_date_in.
+" Remove any existing hyphens just in case it comes in as YYYY-MM-DD
+REPLACE ALL OCCURRENCES OF '-' IN lv_clean_date WITH ''.
+
+IF lv_clean_date IS NOT INITIAL.
+
+  IF strlen( lv_clean_date ) = 6.
+    " Handles YYMMDD (e.g., 270430) -> Assume 20xx for the century
+    lv_year  = |20{ lv_clean_date+0(2) }|.
+    lv_month = lv_clean_date+2(2).
+    lv_day   = lv_clean_date+4(2).
+
+  ELSEIF strlen( lv_clean_date ) = 8.
+    " Handles YYYYMMDD (e.g., 20270430)
+    lv_year  = lv_clean_date+0(4).
+    lv_month = lv_clean_date+4(2).
+    lv_day   = lv_clean_date+6(2).
+
+  ENDIF.
+
+  " Format the final output to YYYY-MM-DD
+  IF lv_year IS NOT INITIAL.
+    p_exp_date_out = |{ lv_year }-{ lv_month }-{ lv_day }|.
+  ENDIF.
+endIF.
   ENDMETHOD.
 
   METHOD get_error_description.
