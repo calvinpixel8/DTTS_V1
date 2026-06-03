@@ -737,11 +737,23 @@ CLASS lhc_Item IMPLEMENTATION.
     CONDENSE p_batch_out NO-GAPS.
 
     CLEAR p_exp_date_out.
-    IF p_exp_date_in IS NOT INITIAL.
-      lv_year  = p_exp_date_in+0(4).
-      lv_month = p_exp_date_in+4(2).
-      lv_day   = p_exp_date_in+6(2).
-      p_exp_date_out = |{ lv_year }-{ lv_month }-{ lv_day }|.
+    DATA lv_clean_date TYPE string.
+    lv_clean_date = p_exp_date_in.
+    REPLACE ALL OCCURRENCES OF '-' IN lv_clean_date WITH ''.
+
+    IF lv_clean_date IS NOT INITIAL.
+      " Check if it's already in the format YYMMDD
+      IF strlen( lv_clean_date ) = 6.
+         lv_year  = lv_clean_date+0(2).
+         lv_month = lv_clean_date+2(2).
+         lv_day   = lv_clean_date+4(2).
+         p_exp_date_out = |{ lv_year }{ lv_month }{ lv_day }|.
+      ELSE.
+         lv_year  = lv_clean_date+0(4).
+         lv_month = lv_clean_date+4(2).
+         lv_day   = lv_clean_date+6(2).
+         p_exp_date_out = |{ lv_year+2(2) }{ lv_month }{ lv_day }|.
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
