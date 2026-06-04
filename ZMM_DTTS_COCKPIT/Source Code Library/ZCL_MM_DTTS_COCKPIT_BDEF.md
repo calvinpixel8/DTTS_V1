@@ -19,8 +19,8 @@ CLASS lhc_Item DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
     TYPES: BEGIN OF ty_key,
              doc_year TYPE mjahr,
-             mat_doc TYPE mblnr,
-             mvt_type TYPE bwart,
+             matdoc TYPE mblnr,
+             mvttype TYPE bwart,
              item_no TYPE numc4,
            END OF ty_key.
     TYPES: tt_keys TYPE STANDARD TABLE OF ty_key WITH DEFAULT KEY.
@@ -102,8 +102,8 @@ CLASS lhc_Item IMPLEMENTATION.
     LOOP AT entities INTO DATA(ls_entity).
       DATA(ls_dttsit2) = VALUE zmm_sst_dttsit2(
         mandt     = sy-mandt
-        mat_doc   = ls_entity-mat_doc
-        mvt_type  = ls_entity-mvt_type
+        mat_doc   = ls_entity-matdoc
+        mvt_type  = ls_entity-mvttype
         item_no   = ls_entity-item_no
         tran_id   = ls_entity-tran_id
         zeile     = ls_entity-zeile
@@ -135,7 +135,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     LOOP AT entities INTO DATA(ls_entity).
       SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_tran_id)
-        WHERE doc_year = @ls_entity-doc_year AND mat_doc = @ls_entity-mat_doc AND mvt_type = @ls_entity-mvt_type AND item_no = @ls_entity-item_no.
+        WHERE doc_year = @ls_entity-doc_year AND mat_doc = @ls_entity-matdoc AND mvt_type = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
 
       IF sy-subrc = 0.
         SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @DATA(ls_dttsit2)
@@ -143,14 +143,14 @@ CLASS lhc_Item IMPLEMENTATION.
 
         IF sy-subrc <> 0.
           SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_base)
-            WHERE doc_year = @ls_entity-doc_year AND mat_doc = @ls_entity-mat_doc AND mvt_type = @ls_entity-mvt_type AND item_no = @ls_entity-item_no.
+            WHERE doc_year = @ls_entity-doc_year AND mat_doc = @ls_entity-matdoc AND mvt_type = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
 
           IF sy-subrc = 0.
             ls_dttsit2-mandt = sy-mandt.
             ls_dttsit2-tran_id = ls_base-tran_id.
             ls_dttsit2-item_no = ls_base-item_no.
-            ls_dttsit2-mat_doc = ls_base-mat_doc.
-            ls_dttsit2-mvt_type = ls_base-mvt_type.
+            ls_dttsit2-mat_doc = ls_base-matdoc.
+            ls_dttsit2-mvt_type = ls_base-mvttype.
             ls_dttsit2-zeile = ls_base-zeile.
             ls_dttsit2-product = ls_base-product.
             ls_dttsit2-prod_name = ls_base-prodname.
@@ -169,7 +169,7 @@ CLASS lhc_Item IMPLEMENTATION.
             ls_dttsit2-trans_stat = ls_base-transstat.
 
             SELECT SINGLE operation, frm_gln, to_gln FROM zmm_sst_dtts_hdr INTO (@ls_dttsit2-operation, @ls_dttsit2-frm_gln, @ls_dttsit2-to_gln)
-              WHERE mat_doc = @ls_entity-mat_doc AND doc_yr = @ls_entity-doc_year AND mvt_type = @ls_entity-mvt_type.
+              WHERE mat_doc = @ls_entity-matdoc AND doc_yr = @ls_entity-doc_year AND mvt_type = @ls_entity-mvttype.
 
             APPEND ls_dttsit2 TO lcl_buffer=>mt_create.
           ENDIF.
@@ -193,7 +193,7 @@ CLASS lhc_Item IMPLEMENTATION.
           APPEND ls_dttsit2 TO lcl_buffer=>mt_update.
         ENDIF.
 
-        APPEND VALUE #( doc_year = ls_entity-doc_year mat_doc = ls_entity-mat_doc mvt_type = ls_entity-mvt_type item_no = ls_entity-item_no ) TO lt_keys_to_reprocess.
+        APPEND VALUE #( doc_year = ls_entity-doc_year matdoc = ls_entity-matdoc mvttype = ls_entity-mvttype item_no = ls_entity-item_no ) TO lt_keys_to_reprocess.
       ENDIF.
     ENDLOOP.
 
@@ -264,12 +264,12 @@ CLASS lhc_Item IMPLEMENTATION.
     IF keys IS NOT INITIAL.
       SELECT * FROM zr_mm_dtts_cockpit
         FOR ALL ENTRIES IN @keys
-        WHERE doc_year = @keys-doc_year AND mat_doc = @keys-mat_doc AND mvt_type = @keys-mvt_type AND item_no = @keys-item_no
+        WHERE doc_year = @keys-doc_year AND mat_doc = @keys-matdoc AND mvt_type = @keys-mvttype AND item_no = @keys-item_no
         INTO CORRESPONDING FIELDS OF TABLE @lt_read_data.
 
       IF sy-subrc = 0.
         LOOP AT lt_read_data INTO DATA(ls_read_data).
-          INSERT VALUE #( %tky = VALUE #( doc_year = ls_read_data-doc_year mat_doc = ls_read_data-mat_doc mvt_type = ls_read_data-mvt_type item_no = ls_read_data-item_no )
+          INSERT VALUE #( %tky = VALUE #( doc_year = ls_read_data-doc_year matdoc = ls_read_data-matdoc mvttype = ls_read_data-mvttype item_no = ls_read_data-item_no )
                           %data = CORRESPONDING #( ls_read_data ) ) INTO TABLE result.
         ENDLOOP.
       ENDIF.
@@ -282,7 +282,7 @@ CLASS lhc_Item IMPLEMENTATION.
   METHOD reprocess.
      DATA lt_keys_to_reprocess TYPE tt_keys.
      LOOP AT keys INTO DATA(ls_key).
-       APPEND VALUE #( doc_year = ls_key-doc_year mat_doc = ls_key-mat_doc mvt_type = ls_key-mvt_type item_no = ls_key-item_no ) TO lt_keys_to_reprocess.
+       APPEND VALUE #( doc_year = ls_key-doc_year matdoc = ls_key-matdoc mvttype = ls_key-mvttype item_no = ls_key-item_no ) TO lt_keys_to_reprocess.
      ENDLOOP.
 
      DATA lt_processed_updates TYPE tt_dttsit2.
@@ -342,8 +342,8 @@ CLASS lhc_Item IMPLEMENTATION.
      rs_err-gtin = is_item-gtin.
      rs_err-batch = is_item-batch.
      rs_err-exp_date = is_item-expdate.
-     rs_err-mat_doc = is_item-mat_doc.
-     rs_err-mvt_type = is_item-mvt_type.
+     rs_err-mat_doc = is_item-matdoc.
+     rs_err-mvt_type = is_item-mvttype.
 
      IF it_header IS NOT INITIAL.
        ASSIGN it_header[ 1 ] TO FIELD-SYMBOL(<fs_hdr>).
@@ -367,8 +367,8 @@ CLASS lhc_Item IMPLEMENTATION.
   METHOD execute_reprocess.
     TYPES: BEGIN OF ty_header_key,
              doc_year TYPE mjahr,
-             mat_doc TYPE mblnr,
-             mvt_type TYPE bwart,
+             matdoc TYPE mblnr,
+             mvttype TYPE bwart,
            END OF ty_header_key.
     DATA: lt_header_keys TYPE TABLE OF ty_header_key.
 
@@ -387,9 +387,9 @@ CLASS lhc_Item IMPLEMENTATION.
           lv_exp_fmt TYPE string.
 
     LOOP AT it_keys INTO DATA(ls_key).
-      APPEND VALUE #( doc_year = ls_key-doc_year mat_doc = ls_key-mat_doc mvt_type = ls_key-mvt_type ) TO lt_header_keys.
+      APPEND VALUE #( doc_year = ls_key-doc_year matdoc = ls_key-matdoc mvttype = ls_key-mvttype ) TO lt_header_keys.
     ENDLOOP.
-    SORT lt_header_keys BY doc_year mat_doc mvt_type.
+    SORT lt_header_keys BY doc_year matdoc mvttype.
     DELETE ADJACENT DUPLICATES FROM lt_header_keys.
 
     DATA: lt_header  TYPE TABLE OF zmm_sst_dtts_hdr,
@@ -411,11 +411,11 @@ CLASS lhc_Item IMPLEMENTATION.
     LOOP AT lt_header_keys INTO DATA(ls_hdr_key).
       CLEAR: lt_header, lt_items.
 
-      LOOP AT it_keys INTO DATA(ls_k) WHERE doc_year = ls_hdr_key-doc_year AND mat_doc = ls_hdr_key-mat_doc AND mvt_type = ls_hdr_key-mvt_type.
+      LOOP AT it_keys INTO DATA(ls_k) WHERE doc_year = ls_hdr_key-doc_year AND mat_doc = ls_hdr_key-matdoc AND mvt_type = ls_hdr_key-mvttype.
         DATA ls_item_st TYPE tt_is_item.
 
         SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_t)
-          WHERE doc_year = @ls_k-doc_year AND mat_doc = @ls_k-mat_doc AND mvt_type = @ls_k-mvt_type AND item_no = @ls_k-item_no.
+          WHERE doc_year = @ls_k-doc_year AND mat_doc = @ls_k-matdoc AND mvt_type = @ls_k-mvttype AND item_no = @ls_k-item_no.
 
         READ TABLE lcl_buffer=>mt_create INTO DATA(ls_buf) WITH KEY tran_id = lv_t item_no = ls_k-item_no.
         IF sy-subrc = 0.
@@ -430,7 +430,7 @@ CLASS lhc_Item IMPLEMENTATION.
              APPEND ls_item_st TO lt_items.
            ELSE.
              SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_db)
-               WHERE doc_year = @ls_k-doc_year AND mat_doc = @ls_k-mat_doc AND mvt_type = @ls_k-mvt_type AND item_no = @ls_k-item_no.
+               WHERE doc_year = @ls_k-doc_year AND mat_doc = @ls_k-matdoc AND mvt_type = @ls_k-mvttype AND item_no = @ls_k-item_no.
              IF sy-subrc = 0.
                ls_item_st = CORRESPONDING #( ls_db ).
                APPEND ls_item_st TO lt_items.
@@ -441,7 +441,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
       IF lt_items IS NOT INITIAL.
         SELECT * FROM zmm_sst_dtts_hdr INTO TABLE @lt_header
-          WHERE mat_doc = @ls_hdr_key-mat_doc AND doc_yr = @ls_hdr_key-doc_year AND mvt_type = @ls_hdr_key-mvt_type.
+          WHERE mat_doc = @ls_hdr_key-matdoc AND doc_yr = @ls_hdr_key-doc_year AND mvt_type = @ls_hdr_key-mvttype.
 
         DATA lv_operation TYPE string.
         IF lt_header IS NOT INITIAL AND lt_header[ 1 ]-operation IS NOT INITIAL.
@@ -668,8 +668,8 @@ CLASS lhc_Item IMPLEMENTATION.
       DATA(ls_param) = ls_key-%param.
 
       DATA lv_doc_year TYPE mjahr.
-      DATA lv_mat_doc TYPE mblnr.
-      DATA lv_mvt_type TYPE bwart.
+      DATA lv_matdoc TYPE mblnr.
+      DATA lv_mvttype TYPE bwart.
       DATA lv_item_no TYPE numc4.
 
       lv_doc_year = sy-datum(4).
@@ -684,8 +684,8 @@ CLASS lhc_Item IMPLEMENTATION.
 
       APPEND VALUE #( %cid = ls_key-%cid
                       doc_year = lv_doc_year
-                      mat_doc = lv_mat_doc
-                      mvt_type = lv_mvt_type
+                      matdoc = lv_mat_doc
+                      mvttype = lv_mvt_type
                       item_no = lv_item_no
                       tran_id = CONV ztran_id( lv_ts )
                       gtin = ls_param-gtin
@@ -700,7 +700,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      CREATE FIELDS ( doc_year mat_doc mvt_type item_no tran_id gtin prodqty batch expdate prodstat createddate createdtime createdby )
+      CREATE FIELDS ( doc_year matdoc mvttype item_no tran_id gtin prodqty batch expdate prodstat createddate createdtime createdby )
       WITH lt_create
       MAPPED DATA(ls_mapped)
       FAILED DATA(ls_failed)
@@ -738,19 +738,28 @@ CLASS lhc_Item IMPLEMENTATION.
     CLEAR p_exp_date_out.
     DATA lv_clean_date TYPE string.
     lv_clean_date = p_exp_date_in.
+    " Remove any existing hyphens just in case it comes in as YYYY-MM-DD
     REPLACE ALL OCCURRENCES OF '-' IN lv_clean_date WITH ''.
 
     IF lv_clean_date IS NOT INITIAL.
+
       IF strlen( lv_clean_date ) = 6.
-         lv_year  = lv_clean_date+0(2).
-         lv_month = lv_clean_date+2(2).
-         lv_day   = lv_clean_date+4(2).
-         p_exp_date_out = |{ lv_year }{ lv_month }{ lv_day }|.
-      ELSE.
-         lv_year  = lv_clean_date+0(4).
-         lv_month = lv_clean_date+4(2).
-         lv_day   = lv_clean_date+6(2).
-         p_exp_date_out = |{ lv_year+2(2) }{ lv_month }{ lv_day }|.
+        " Handles YYMMDD (e.g., 270430) -> Assume 20xx for the century
+        lv_year  = |20{ lv_clean_date+0(2) }|.
+        lv_month = lv_clean_date+2(2).
+        lv_day   = lv_clean_date+4(2).
+
+      ELSEIF strlen( lv_clean_date ) = 8.
+        " Handles YYYYMMDD (e.g., 20270430)
+        lv_year  = lv_clean_date+0(4).
+        lv_month = lv_clean_date+4(2).
+        lv_day   = lv_clean_date+6(2).
+
+      ENDIF.
+
+      " Format the final output to YYYY-MM-DD
+      IF lv_year IS NOT INITIAL.
+        p_exp_date_out = |{ lv_year }-{ lv_month }-{ lv_day }|.
       ENDIF.
     ENDIF.
   ENDMETHOD.

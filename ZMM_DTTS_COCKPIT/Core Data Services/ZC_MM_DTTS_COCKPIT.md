@@ -9,8 +9,8 @@ define root view entity ZC_MM_DTTS_COCKPIT
 {
   key doc_year,
   @Search.defaultSearchElement: true
-  key mat_doc,
-  key mvt_type,
+  key matdoc,
+  key mvttype,
   key item_no,
   @Search.defaultSearchElement: true
   tran_id,

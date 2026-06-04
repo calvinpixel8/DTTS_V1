@@ -54,6 +54,6 @@ annotate view ZC_MM_DTTS_COCKPIT with
   @UI.selectionField: [ { position: 10 } ]
   @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
                        { position: 120, label: 'Material Document' }]
-  mat_doc;
+  matdoc;
 }
 ```
