@@ -10,10 +10,10 @@ annotate view ZC_MM_DTTS_COCKPIT with
 
   @UI.selectionField: [ { position: 30 } ]
   @UI.lineItem: [ { position: 10, label: 'Transaction ID' } ]
-  tranid;
+  tran_id;
 
   @UI.lineItem: [ { position: 20, label: 'Item No' } ]
-  itemno;
+  item_no;
 
   @UI.lineItem: [ { position: 30, label: 'From GLN' } ]
   @UI.identification: [ { position: 30, label: 'From GLN' } ]
@@ -54,6 +54,6 @@ annotate view ZC_MM_DTTS_COCKPIT with
   @UI.selectionField: [ { position: 10 } ]
   @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
                        { position: 120, label: 'Material Document' }]
-  matdoc;
+  mat_doc;
 }
 ```

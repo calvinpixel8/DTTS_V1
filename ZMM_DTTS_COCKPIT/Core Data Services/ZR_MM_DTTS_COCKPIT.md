@@ -5,11 +5,11 @@ define root view entity ZR_MM_DTTS_COCKPIT
   as select from ZIMMDTTS_4 as Item
 {
   key Item.mandt,
-  key Item.DOC_YEAR as docyear,
-  key Item.mat_doc as matdoc,
-  key Item.mvt_type as mvttype,
-  key Item.item_no as itemno,
-      Item.tran_id as tranid,
+  key Item.DOC_YEAR as doc_year,
+  key Item.mat_doc as mat_doc,
+  key Item.mvt_type as mvt_type,
+  key Item.item_no as item_no,
+      Item.tran_id as tran_id,
       Item.zeile,
       Item.product,
       Item.prod_name as prodname,

@@ -7,11 +7,11 @@
 define table zmm_sst_dttsit2d {
 
   key mandt   : mandt not null;
-  key docyear : mjahr not null;
-  key matdoc  : mblnr not null;
-  key mvttype : bwart not null;
-  key itemno  : abap.numc(4) not null;
-  tranid      : ztran_id;
+  key doc_year : mjahr not null;
+  key mat_doc  : mblnr not null;
+  key mvt_type : bwart not null;
+  key item_no  : abap.numc(4) not null;
+  tran_id      : ztran_id;
   zeile       : mblpo;
   product     : matnr;
   prodname    : maktx;

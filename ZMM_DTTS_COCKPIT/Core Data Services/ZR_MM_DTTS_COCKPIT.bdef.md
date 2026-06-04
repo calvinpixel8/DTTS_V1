@@ -13,7 +13,7 @@ authorization master ( instance )
   update ( features : instance ); // Only non-success can be updated
   delete;
 
-  field ( readonly ) mandt, docyear, matdoc, mvttype, itemno, prodstat, transstat, notifid, tranid;
+  field ( readonly ) mandt, doc_year, mat_doc, mvt_type, item_no, prodstat, transstat, notifid, tran_id;
 
   // Actions
   action ( features : instance ) reprocess result [1] $self;

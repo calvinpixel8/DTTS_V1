@@ -7,13 +7,13 @@ define root view entity ZC_MM_DTTS_COCKPIT
   provider contract transactional_query
   as projection on ZR_MM_DTTS_COCKPIT
 {
-  key docyear,
+  key doc_year,
   @Search.defaultSearchElement: true
-  key matdoc,
-  key mvttype,
-  key itemno,
+  key mat_doc,
+  key mvt_type,
+  key item_no,
   @Search.defaultSearchElement: true
-  tranid,
+  tran_id,
   zeile,
   product,
   prodname,
