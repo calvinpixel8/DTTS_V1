@@ -461,28 +461,1110 @@ CLASS lhc_Item IMPLEMENTATION.
           ASSIGN response_ptr->* TO <fs_response>.
 
           CASE lv_operation.
+
             WHEN 'ACCEPT'.
-              ASSIGN COMPONENT 'ACCEPT_BATCH_SERVICE_REQUEST' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req>).
+              ASSIGN COMPONENT 'ACCEPT_BATCH_SERVICE_REQUEST' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_ACC>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_fromgln_ACC>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_ACC> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_ACC> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_togln_ACC>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_ACC> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_ACC> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'ACCEPT' = 'DRUG_SALE' OR 'ACCEPT' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_ACC> IS INITIAL OR <lv_togln_ACC> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_ACC> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_authgln_ACC>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'ACCEPT' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_ACC> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_ACC> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_doc_ACC>).
+                IF sy-subrc = 0. <lv_doc_ACC> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_pat_ACC>).
+                IF sy-subrc = 0. <lv_pat_ACC> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_presc_ACC>).
+                IF sy-subrc = 0. <lv_presc_ACC> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_pdate_ACC>).
+                IF sy-subrc = 0. <lv_pdate_ACC> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_dr_ACC>).
+                IF sy-subrc = 0. <lv_dr_ACC> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<lv_exp_ACC>).
+                IF sy-subrc = 0. <lv_exp_ACC> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_ACC> TO FIELD-SYMBOL(<fs_prod_list_ACC>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_ACC> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_ACCEPT).
+                            IF ls_item_ACC-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_ACC-gtin ) p_quantity_in = CONV #( ls_item_ACC-prodqty ) p_batch_in = CONV #( ls_item_ACC-batch ) p_exp_date_in = CONV #( ls_item_ACC-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_ACC>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_gtin_ACC>).
+                            IF sy-subrc = 0. <l_gtin_ACC> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_sn_ACC>).
+                            IF sy-subrc = 0. <l_sn_ACC> = ls_item_ACC-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_qty_ACC>).
+                            IF sy-subrc = 0. <l_qty_ACC> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_bn_ACC>).
+                            IF sy-subrc = 0. <l_bn_ACC> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_xd_ACC>).
+                            IF sy-subrc = 0. <l_xd_ACC> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_ACC> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'RETURN'.
-              ASSIGN COMPONENT 'RETURN_SERVICE_REQUEST' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'RETURN_BATCH_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_RET>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_fromgln_RET>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_RET> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_RET> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_togln_RET>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_RET> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_RET> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'RETURN' = 'DRUG_SALE' OR 'RETURN' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_RET> IS INITIAL OR <lv_togln_RET> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_RET> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_authgln_RET>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'RETURN' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_RET> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_RET> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_doc_RET>).
+                IF sy-subrc = 0. <lv_doc_RET> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_pat_RET>).
+                IF sy-subrc = 0. <lv_pat_RET> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_presc_RET>).
+                IF sy-subrc = 0. <lv_presc_RET> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_pdate_RET>).
+                IF sy-subrc = 0. <lv_pdate_RET> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_dr_RET>).
+                IF sy-subrc = 0. <lv_dr_RET> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_exp_RET>).
+                IF sy-subrc = 0. <lv_exp_RET> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<fs_prod_list_RET>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_RET> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_RETURN).
+                            IF ls_item_RET-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_RET-gtin ) p_quantity_in = CONV #( ls_item_RET-prodqty ) p_batch_in = CONV #( ls_item_RET-batch ) p_exp_date_in = CONV #( ls_item_RET-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_RET>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_gtin_RET>).
+                            IF sy-subrc = 0. <l_gtin_RET> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_sn_RET>).
+                            IF sy-subrc = 0. <l_sn_RET> = ls_item_RET-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_qty_RET>).
+                            IF sy-subrc = 0. <l_qty_RET> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_bn_RET>).
+                            IF sy-subrc = 0. <l_bn_RET> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_xd_RET>).
+                            IF sy-subrc = 0. <l_xd_RET> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_RET> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'DISPATCH'.
-              ASSIGN COMPONENT 'DISPATCH_BATCH_SERVICE_REQUE3' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'DISPATCH_BATCH_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DISP>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_fromgln_DISP>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DISP> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DISP> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_togln_DISP>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_DISP> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_DISP> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'DISPATCH' = 'DRUG_SALE' OR 'DISPATCH' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_DISP> IS INITIAL OR <lv_togln_DISP> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_DISP> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_authgln_DISP>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'DISPATCH' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DISP> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DISP> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_doc_DISP>).
+                IF sy-subrc = 0. <lv_doc_DISP> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_pat_DISP>).
+                IF sy-subrc = 0. <lv_pat_DISP> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_presc_DISP>).
+                IF sy-subrc = 0. <lv_presc_DISP> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_pdate_DISP>).
+                IF sy-subrc = 0. <lv_pdate_DISP> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_dr_DISP>).
+                IF sy-subrc = 0. <lv_dr_DISP> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_exp_DISP>).
+                IF sy-subrc = 0. <lv_exp_DISP> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<fs_prod_list_DISP>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_DISP> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_DISPATCH).
+                            IF ls_item_DISP-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP-gtin ) p_quantity_in = CONV #( ls_item_DISP-prodqty ) p_batch_in = CONV #( ls_item_DISP-batch ) p_exp_date_in = CONV #( ls_item_DISP-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_DISP>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_gtin_DISP>).
+                            IF sy-subrc = 0. <l_gtin_DISP> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_sn_DISP>).
+                            IF sy-subrc = 0. <l_sn_DISP> = ls_item_DISP-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_qty_DISP>).
+                            IF sy-subrc = 0. <l_qty_DISP> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_bn_DISP>).
+                            IF sy-subrc = 0. <l_bn_DISP> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_xd_DISP>).
+                            IF sy-subrc = 0. <l_xd_DISP> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_DISP> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'DISPATCH_CANCEL'.
-              ASSIGN COMPONENT 'DISPATCH_CANCEL_SERVICE_REQUE' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'DISPATCH_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DISP_CAN>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_fromgln_DISP_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DISP_CAN> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DISP_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_togln_DISP_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_DISP_CAN> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_DISP_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'DISPATCH_CANCEL' = 'DRUG_SALE' OR 'DISPATCH_CANCEL' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_DISP_CAN> IS INITIAL OR <lv_togln_DISP_CAN> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_DISP_CAN> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_authgln_DISP_CAN>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'DISPATCH_CANCEL' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DISP_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DISP_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_doc_DISP_CAN>).
+                IF sy-subrc = 0. <lv_doc_DISP_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_pat_DISP_CAN>).
+                IF sy-subrc = 0. <lv_pat_DISP_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_presc_DISP_CAN>).
+                IF sy-subrc = 0. <lv_presc_DISP_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_pdate_DISP_CAN>).
+                IF sy-subrc = 0. <lv_pdate_DISP_CAN> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_dr_DISP_CAN>).
+                IF sy-subrc = 0. <lv_dr_DISP_CAN> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_exp_DISP_CAN>).
+                IF sy-subrc = 0. <lv_exp_DISP_CAN> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<fs_prod_list_DISP_CAN>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_DISP_CAN> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_DISPATCH_CANCEL).
+                            IF ls_item_DISP_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP_CAN-gtin ) p_quantity_in = CONV #( ls_item_DISP_CAN-prodqty ) p_batch_in = CONV #( ls_item_DISP_CAN-batch ) p_exp_date_in = CONV #( ls_item_DISP_CAN-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_DISP_CAN>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_gtin_DISP_CAN>).
+                            IF sy-subrc = 0. <l_gtin_DISP_CAN> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_sn_DISP_CAN>).
+                            IF sy-subrc = 0. <l_sn_DISP_CAN> = ls_item_DISP_CAN-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_qty_DISP_CAN>).
+                            IF sy-subrc = 0. <l_qty_DISP_CAN> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_bn_DISP_CAN>).
+                            IF sy-subrc = 0. <l_bn_DISP_CAN> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_xd_DISP_CAN>).
+                            IF sy-subrc = 0. <l_xd_DISP_CAN> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_DISP_CAN> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'TRANSFER'.
-              ASSIGN COMPONENT 'TRANSFER_BATCH_SERVICE_REQUES' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'TRANSFER_BATCH_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_TRAN>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_fromgln_TRAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_TRAN> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_TRAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_togln_TRAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_TRAN> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_TRAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'TRANSFER' = 'DRUG_SALE' OR 'TRANSFER' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_TRAN> IS INITIAL OR <lv_togln_TRAN> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_TRAN> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_authgln_TRAN>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'TRANSFER' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_TRAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_TRAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_doc_TRAN>).
+                IF sy-subrc = 0. <lv_doc_TRAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_pat_TRAN>).
+                IF sy-subrc = 0. <lv_pat_TRAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_presc_TRAN>).
+                IF sy-subrc = 0. <lv_presc_TRAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_pdate_TRAN>).
+                IF sy-subrc = 0. <lv_pdate_TRAN> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_dr_TRAN>).
+                IF sy-subrc = 0. <lv_dr_TRAN> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_exp_TRAN>).
+                IF sy-subrc = 0. <lv_exp_TRAN> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<fs_prod_list_TRAN>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_TRAN> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_TRANSFER).
+                            IF ls_item_TRAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN-gtin ) p_quantity_in = CONV #( ls_item_TRAN-prodqty ) p_batch_in = CONV #( ls_item_TRAN-batch ) p_exp_date_in = CONV #( ls_item_TRAN-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_TRAN>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_gtin_TRAN>).
+                            IF sy-subrc = 0. <l_gtin_TRAN> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_sn_TRAN>).
+                            IF sy-subrc = 0. <l_sn_TRAN> = ls_item_TRAN-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_qty_TRAN>).
+                            IF sy-subrc = 0. <l_qty_TRAN> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_bn_TRAN>).
+                            IF sy-subrc = 0. <l_bn_TRAN> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_xd_TRAN>).
+                            IF sy-subrc = 0. <l_xd_TRAN> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_TRAN> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'TRANSFER_CANCEL'.
-              ASSIGN COMPONENT 'TRANSFER_CANCEL_SERVICE_REQUE' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'TRANSFER_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_TRAN_CAN>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_fromgln_TRAN_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_TRAN_CAN> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_TRAN_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_togln_TRAN_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_TRAN_CAN> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_TRAN_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'TRANSFER_CANCEL' = 'DRUG_SALE' OR 'TRANSFER_CANCEL' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_TRAN_CAN> IS INITIAL OR <lv_togln_TRAN_CAN> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_TRAN_CAN> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_authgln_TRAN_CAN>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'TRANSFER_CANCEL' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_TRAN_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_TRAN_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_doc_TRAN_CAN>).
+                IF sy-subrc = 0. <lv_doc_TRAN_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_pat_TRAN_CAN>).
+                IF sy-subrc = 0. <lv_pat_TRAN_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_presc_TRAN_CAN>).
+                IF sy-subrc = 0. <lv_presc_TRAN_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_pdate_TRAN_CAN>).
+                IF sy-subrc = 0. <lv_pdate_TRAN_CAN> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_dr_TRAN_CAN>).
+                IF sy-subrc = 0. <lv_dr_TRAN_CAN> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_exp_TRAN_CAN>).
+                IF sy-subrc = 0. <lv_exp_TRAN_CAN> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<fs_prod_list_TRAN_CAN>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_TRAN_CAN> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_TRANSFER_CANCEL).
+                            IF ls_item_TRAN_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN_CAN-gtin ) p_quantity_in = CONV #( ls_item_TRAN_CAN-prodqty ) p_batch_in = CONV #( ls_item_TRAN_CAN-batch ) p_exp_date_in = CONV #( ls_item_TRAN_CAN-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_TRAN_CAN>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_gtin_TRAN_CAN>).
+                            IF sy-subrc = 0. <l_gtin_TRAN_CAN> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_sn_TRAN_CAN>).
+                            IF sy-subrc = 0. <l_sn_TRAN_CAN> = ls_item_TRAN_CAN-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_qty_TRAN_CAN>).
+                            IF sy-subrc = 0. <l_qty_TRAN_CAN> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_bn_TRAN_CAN>).
+                            IF sy-subrc = 0. <l_bn_TRAN_CAN> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_xd_TRAN_CAN>).
+                            IF sy-subrc = 0. <l_xd_TRAN_CAN> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_TRAN_CAN> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'CONSUME'.
-              ASSIGN COMPONENT 'CONSUME_SERVICE_REQUEST' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'CONSUME_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_CONS>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_fromgln_CONS>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_CONS> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_CONS> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_togln_CONS>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_CONS> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_CONS> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'CONSUME' = 'DRUG_SALE' OR 'CONSUME' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_CONS> IS INITIAL OR <lv_togln_CONS> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_CONS> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_authgln_CONS>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'CONSUME' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_CONS> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_CONS> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_doc_CONS>).
+                IF sy-subrc = 0. <lv_doc_CONS> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_pat_CONS>).
+                IF sy-subrc = 0. <lv_pat_CONS> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_presc_CONS>).
+                IF sy-subrc = 0. <lv_presc_CONS> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_pdate_CONS>).
+                IF sy-subrc = 0. <lv_pdate_CONS> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_dr_CONS>).
+                IF sy-subrc = 0. <lv_dr_CONS> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_exp_CONS>).
+                IF sy-subrc = 0. <lv_exp_CONS> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<fs_prod_list_CONS>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_CONS> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_CONSUME).
+                            IF ls_item_CONS-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS-gtin ) p_quantity_in = CONV #( ls_item_CONS-prodqty ) p_batch_in = CONV #( ls_item_CONS-batch ) p_exp_date_in = CONV #( ls_item_CONS-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_CONS>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_gtin_CONS>).
+                            IF sy-subrc = 0. <l_gtin_CONS> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_sn_CONS>).
+                            IF sy-subrc = 0. <l_sn_CONS> = ls_item_CONS-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_qty_CONS>).
+                            IF sy-subrc = 0. <l_qty_CONS> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_bn_CONS>).
+                            IF sy-subrc = 0. <l_bn_CONS> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_xd_CONS>).
+                            IF sy-subrc = 0. <l_xd_CONS> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_CONS> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'CONSUME_CANCEL'.
-              ASSIGN COMPONENT 'CONSUME_CANCEL_SERVICE_REQUES' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'CONSUME_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_CONS_CAN>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_fromgln_CONS_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_CONS_CAN> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_CONS_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_togln_CONS_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_CONS_CAN> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_CONS_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'CONSUME_CANCEL' = 'DRUG_SALE' OR 'CONSUME_CANCEL' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_CONS_CAN> IS INITIAL OR <lv_togln_CONS_CAN> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_CONS_CAN> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_authgln_CONS_CAN>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'CONSUME_CANCEL' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_CONS_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_CONS_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_doc_CONS_CAN>).
+                IF sy-subrc = 0. <lv_doc_CONS_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_pat_CONS_CAN>).
+                IF sy-subrc = 0. <lv_pat_CONS_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_presc_CONS_CAN>).
+                IF sy-subrc = 0. <lv_presc_CONS_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_pdate_CONS_CAN>).
+                IF sy-subrc = 0. <lv_pdate_CONS_CAN> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_dr_CONS_CAN>).
+                IF sy-subrc = 0. <lv_dr_CONS_CAN> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_exp_CONS_CAN>).
+                IF sy-subrc = 0. <lv_exp_CONS_CAN> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<fs_prod_list_CONS_CAN>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_CONS_CAN> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_CONSUME_CANCEL).
+                            IF ls_item_CONS_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS_CAN-gtin ) p_quantity_in = CONV #( ls_item_CONS_CAN-prodqty ) p_batch_in = CONV #( ls_item_CONS_CAN-batch ) p_exp_date_in = CONV #( ls_item_CONS_CAN-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_CONS_CAN>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_gtin_CONS_CAN>).
+                            IF sy-subrc = 0. <l_gtin_CONS_CAN> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_sn_CONS_CAN>).
+                            IF sy-subrc = 0. <l_sn_CONS_CAN> = ls_item_CONS_CAN-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_qty_CONS_CAN>).
+                            IF sy-subrc = 0. <l_qty_CONS_CAN> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_bn_CONS_CAN>).
+                            IF sy-subrc = 0. <l_bn_CONS_CAN> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_xd_CONS_CAN>).
+                            IF sy-subrc = 0. <l_xd_CONS_CAN> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_CONS_CAN> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'DRUG_SALE'.
-              ASSIGN COMPONENT 'PHARMACY_SALE_SERVICE_REQUEST' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'PHARMACY_SALE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_SALE>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_fromgln_SALE>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_SALE> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_SALE> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_togln_SALE>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_SALE> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_SALE> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'DRUG_SALE' = 'DRUG_SALE' OR 'DRUG_SALE' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_SALE> IS INITIAL OR <lv_togln_SALE> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_SALE> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_authgln_SALE>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'DRUG_SALE' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_SALE> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_SALE> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_doc_SALE>).
+                IF sy-subrc = 0. <lv_doc_SALE> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_pat_SALE>).
+                IF sy-subrc = 0. <lv_pat_SALE> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_presc_SALE>).
+                IF sy-subrc = 0. <lv_presc_SALE> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_pdate_SALE>).
+                IF sy-subrc = 0. <lv_pdate_SALE> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_dr_SALE>).
+                IF sy-subrc = 0. <lv_dr_SALE> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_exp_SALE>).
+                IF sy-subrc = 0. <lv_exp_SALE> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<fs_prod_list_SALE>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_SALE> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_DRUG_SALE).
+                            IF ls_item_SALE-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE-gtin ) p_quantity_in = CONV #( ls_item_SALE-prodqty ) p_batch_in = CONV #( ls_item_SALE-batch ) p_exp_date_in = CONV #( ls_item_SALE-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_SALE>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_gtin_SALE>).
+                            IF sy-subrc = 0. <l_gtin_SALE> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_sn_SALE>).
+                            IF sy-subrc = 0. <l_sn_SALE> = ls_item_SALE-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_qty_SALE>).
+                            IF sy-subrc = 0. <l_qty_SALE> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_bn_SALE>).
+                            IF sy-subrc = 0. <l_bn_SALE> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_xd_SALE>).
+                            IF sy-subrc = 0. <l_xd_SALE> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_SALE> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'DRUG_SALE_CANCEL'.
-              ASSIGN COMPONENT 'PHARMACY_SALE_CANCEL_SERVICE2' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'PHARMACY_SALE_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_SALE_CAN>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_fromgln_SALE_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_SALE_CAN> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_SALE_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_togln_SALE_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_SALE_CAN> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_SALE_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'DRUG_SALE_CANCEL' = 'DRUG_SALE' OR 'DRUG_SALE_CANCEL' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_SALE_CAN> IS INITIAL OR <lv_togln_SALE_CAN> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_SALE_CAN> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_authgln_SALE_CAN>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'DRUG_SALE_CANCEL' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_SALE_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_SALE_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_doc_SALE_CAN>).
+                IF sy-subrc = 0. <lv_doc_SALE_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_pat_SALE_CAN>).
+                IF sy-subrc = 0. <lv_pat_SALE_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_presc_SALE_CAN>).
+                IF sy-subrc = 0. <lv_presc_SALE_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_pdate_SALE_CAN>).
+                IF sy-subrc = 0. <lv_pdate_SALE_CAN> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_dr_SALE_CAN>).
+                IF sy-subrc = 0. <lv_dr_SALE_CAN> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_exp_SALE_CAN>).
+                IF sy-subrc = 0. <lv_exp_SALE_CAN> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<fs_prod_list_SALE_CAN>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_SALE_CAN> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_DRUG_SALE_CANCEL).
+                            IF ls_item_SALE_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE_CAN-gtin ) p_quantity_in = CONV #( ls_item_SALE_CAN-prodqty ) p_batch_in = CONV #( ls_item_SALE_CAN-batch ) p_exp_date_in = CONV #( ls_item_SALE_CAN-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_SALE_CAN>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_gtin_SALE_CAN>).
+                            IF sy-subrc = 0. <l_gtin_SALE_CAN> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_sn_SALE_CAN>).
+                            IF sy-subrc = 0. <l_sn_SALE_CAN> = ls_item_SALE_CAN-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_qty_SALE_CAN>).
+                            IF sy-subrc = 0. <l_qty_SALE_CAN> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_bn_SALE_CAN>).
+                            IF sy-subrc = 0. <l_bn_SALE_CAN> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_xd_SALE_CAN>).
+                            IF sy-subrc = 0. <l_xd_SALE_CAN> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_SALE_CAN> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
             WHEN 'DEACTIVATE'.
-              ASSIGN COMPONENT 'DEACTIVATE_SERVICE_REQUEST' OF STRUCTURE <fs_request> TO <fs_req>.
+              ASSIGN COMPONENT 'DEACTIVATION_REQUEST' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DEAC>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_fromgln_DEAC>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DEAC> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DEAC> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_togln_DEAC>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_DEAC> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_DEAC> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'DEACTIVATE' = 'DRUG_SALE' OR 'DEACTIVATE' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_DEAC> IS INITIAL OR <lv_togln_DEAC> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_DEAC> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_authgln_DEAC>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'DEACTIVATE' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DEAC> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DEAC> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_doc_DEAC>).
+                IF sy-subrc = 0. <lv_doc_DEAC> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_pat_DEAC>).
+                IF sy-subrc = 0. <lv_pat_DEAC> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_presc_DEAC>).
+                IF sy-subrc = 0. <lv_presc_DEAC> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_pdate_DEAC>).
+                IF sy-subrc = 0. <lv_pdate_DEAC> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_dr_DEAC>).
+                IF sy-subrc = 0. <lv_dr_DEAC> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_exp_DEAC>).
+                IF sy-subrc = 0. <lv_exp_DEAC> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<fs_prod_list_DEAC>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_DEAC> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_DEACTIVATE).
+                            IF ls_item_DEAC-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC-gtin ) p_quantity_in = CONV #( ls_item_DEAC-prodqty ) p_batch_in = CONV #( ls_item_DEAC-batch ) p_exp_date_in = CONV #( ls_item_DEAC-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_DEAC>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_gtin_DEAC>).
+                            IF sy-subrc = 0. <l_gtin_DEAC> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_sn_DEAC>).
+                            IF sy-subrc = 0. <l_sn_DEAC> = ls_item_DEAC-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_qty_DEAC>).
+                            IF sy-subrc = 0. <l_qty_DEAC> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_bn_DEAC>).
+                            IF sy-subrc = 0. <l_bn_DEAC> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_xd_DEAC>).
+                            IF sy-subrc = 0. <l_xd_DEAC> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_DEAC> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
+            WHEN 'DEACTIVATE_CANCEL'.
+              ASSIGN COMPONENT 'DEACTIVATION_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DEAC_CAN>).
+              IF sy-subrc = 0.
+                " --- GLN Assignments ---
+                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_fromgln_DEAC_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DEAC_CAN> = lt_items[ 1 ]-frm_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DEAC_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_togln_DEAC_CAN>).
+                IF sy-subrc = 0.
+                   IF lt_items[ 1 ]-to_gln IS NOT INITIAL. <lv_togln_DEAC_CAN> = lt_items[ 1 ]-to_gln.
+                   ELSEIF lt_header IS NOT INITIAL. <lv_togln_DEAC_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   " Specific override for DRUG_SALE logic in proxy
+                   IF 'DEACTIVATE_CANCEL' = 'DRUG_SALE' OR 'DEACTIVATE_CANCEL' = 'DRUG_SALE_CANCEL'.
+                     IF <lv_togln_DEAC_CAN> IS INITIAL OR <lv_togln_DEAC_CAN> = lt_header[ 1 ]-frm_gln.
+                       <lv_togln_DEAC_CAN> = '0000000000000'.
+                     ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                ASSIGN COMPONENT 'AUTHGLN' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_authgln_DEAC_CAN>).
+                IF sy-subrc = 0.
+                   " For DISPATCH, TRANSFER, RETURN, CONSUME, DRUG_SALE, authgln is typically frm_gln.
+                   IF 'DEACTIVATE_CANCEL' = 'ACCEPT'.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DEAC_CAN> = lt_header[ 1 ]-to_gln. ENDIF.
+                   ELSE.
+                     IF lt_header IS NOT INITIAL. <lv_authgln_DEAC_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
+                   ENDIF.
+                ENDIF.
+
+                " --- Special Constants for certain operations ---
+                ASSIGN COMPONENT 'DOCTORID' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_doc_DEAC_CAN>).
+                IF sy-subrc = 0. <lv_doc_DEAC_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PATIENTNATIONALID' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_pat_DEAC_CAN>).
+                IF sy-subrc = 0. <lv_pat_DEAC_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONID' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_presc_DEAC_CAN>).
+                IF sy-subrc = 0. <lv_presc_DEAC_CAN> = 'NA'. ENDIF.
+
+                ASSIGN COMPONENT 'PRESCRIPTIONDATE' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_pdate_DEAC_CAN>).
+                IF sy-subrc = 0. <lv_pdate_DEAC_CAN> = |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }|. ENDIF.
+
+                ASSIGN COMPONENT 'DR' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_dr_DEAC_CAN>).
+                IF sy-subrc = 0. <lv_dr_DEAC_CAN> = '30'. ENDIF. " Default GRUND if missing in mseg
+
+                ASSIGN COMPONENT 'EXPLANATION' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_exp_DEAC_CAN>).
+                IF sy-subrc = 0. <lv_exp_DEAC_CAN> = 'Damaged Product'. ENDIF.
+
+                " --- Product List Mapping ---
+                ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<fs_prod_list_DEAC_CAN>).
+                IF sy-subrc = 0.
+                   ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_prod_list_DEAC_CAN> TO <lt_products>.
+                   IF sy-subrc = 0.
+                      TRY.
+                          lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
+                          lo_line_desc = lo_table_desc->get_table_line_type( ).
+
+                          LOOP AT lt_items INTO DATA(ls_item_DEACTIVATE_CANCEL).
+                            IF ls_item_DEAC_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC_CAN-gtin ) p_quantity_in = CONV #( ls_item_DEAC_CAN-prodqty ) p_batch_in = CONV #( ls_item_DEAC_CAN-batch ) p_exp_date_in = CONV #( ls_item_DEAC_CAN-expdate )
+                                             IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
+
+                            CREATE DATA dref_line TYPE HANDLE lo_line_desc.
+                            ASSIGN dref_line->* TO FIELD-SYMBOL(<ls_product_line_DEAC_CAN>).
+
+                            ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_gtin_DEAC_CAN>).
+                            IF sy-subrc = 0. <l_gtin_DEAC_CAN> = lv_gtin_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_sn_DEAC_CAN>).
+                            IF sy-subrc = 0. <l_sn_DEAC_CAN> = ls_item_DEAC_CAN-srnumber. ENDIF.
+
+                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_qty_DEAC_CAN>).
+                            IF sy-subrc = 0. <l_qty_DEAC_CAN> = lv_qty_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_bn_DEAC_CAN>).
+                            IF sy-subrc = 0. <l_bn_DEAC_CAN> = lv_batch_fmt. ENDIF.
+
+                            ASSIGN COMPONENT 'XD' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_xd_DEAC_CAN>).
+                            IF sy-subrc = 0. <l_xd_DEAC_CAN> = lv_exp_fmt. ENDIF.
+
+                            INSERT <ls_product_line_DEAC_CAN> INTO TABLE <lt_products>.
+                          ENDLOOP.
+                        CATCH cx_root.
+                      ENDTRY.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
             WHEN OTHERS.
           ENDCASE.
 
@@ -560,28 +1642,738 @@ CLASS lhc_Item IMPLEMENTATION.
               lv_all_success = abap_true.
 
               CASE lv_operation.
+
                 WHEN 'ACCEPT'.
-                  ASSIGN COMPONENT 'ACCEPT_BATCH_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp>).
+                  ASSIGN COMPONENT 'ACCEPT_BATCH_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_ACC>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_ACC> TO FIELD-SYMBOL(<lv_notif_id_ACC>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_ACC> TO FIELD-SYMBOL(<fs_resp_prod_list_ACC>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_ACC> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_ACC>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_ACC> TO FIELD-SYMBOL(<r_gtin_ACC>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_ACC> TO FIELD-SYMBOL(<r_bn_ACC>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_ACC> TO FIELD-SYMBOL(<r_rc_ACC>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_ACC>).
+                             IF <fs_item_ACC>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_ACC>-gtin. lv_resp_gtin = <r_gtin_ACC>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_ACC>-batch = <r_bn_ACC>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_ACC>-tran_id AND item_no = @<fs_item_ACC>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_ACC>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_ACC>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_ACC>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_ACC>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_ACC>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_ACC>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_ACC>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_ACC>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_ACC>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_ACC>-expdate.
+                               IF <lv_notif_id_ACC> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_ACC>. ENDIF.
+                               IF <r_rc_ACC> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_ACC>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_ACC>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_ACC>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_ACC> IS ASSIGNED AND <r_rc_ACC> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_ACC> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_ACC> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'RETURN'.
-                  ASSIGN COMPONENT 'RETURN_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'RETURN_BATCH_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_RET>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_RET> TO FIELD-SYMBOL(<lv_notif_id_RET>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_RET> TO FIELD-SYMBOL(<fs_resp_prod_list_RET>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_RET> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_RET>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_RET> TO FIELD-SYMBOL(<r_gtin_RET>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_RET> TO FIELD-SYMBOL(<r_bn_RET>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_RET> TO FIELD-SYMBOL(<r_rc_RET>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_RET>).
+                             IF <fs_item_RET>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_RET>-gtin. lv_resp_gtin = <r_gtin_RET>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_RET>-batch = <r_bn_RET>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_RET>-tran_id AND item_no = @<fs_item_RET>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_RET>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_RET>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_RET>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_RET>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_RET>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_RET>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_RET>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_RET>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_RET>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_RET>-expdate.
+                               IF <lv_notif_id_RET> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_RET>. ENDIF.
+                               IF <r_rc_RET> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_RET>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_RET>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_RET>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_RET> IS ASSIGNED AND <r_rc_RET> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_RET> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_RET> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'DISPATCH'.
-                  ASSIGN COMPONENT 'DISPATCH_BATCH_SERVICE_REQUE1' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'DISPATCH_BATCH_SERVICE_RESPONS' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_DISP>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_DISP> TO FIELD-SYMBOL(<lv_notif_id_DISP>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_DISP> TO FIELD-SYMBOL(<fs_resp_prod_list_DISP>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_DISP> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_DISP>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_DISP> TO FIELD-SYMBOL(<r_gtin_DISP>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_DISP> TO FIELD-SYMBOL(<r_bn_DISP>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DISP> TO FIELD-SYMBOL(<r_rc_DISP>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DISP>).
+                             IF <fs_item_DISP>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_DISP>-gtin. lv_resp_gtin = <r_gtin_DISP>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DISP>-batch = <r_bn_DISP>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_DISP>-tran_id AND item_no = @<fs_item_DISP>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_DISP>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DISP>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DISP>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DISP>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_DISP>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_DISP>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_DISP>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_DISP>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DISP>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_DISP>-expdate.
+                               IF <lv_notif_id_DISP> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DISP>. ENDIF.
+                               IF <r_rc_DISP> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DISP>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DISP>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DISP>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_DISP> IS ASSIGNED AND <r_rc_DISP> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_DISP> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_DISP> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'DISPATCH_CANCEL'.
-                  ASSIGN COMPONENT 'DISPATCH_CANCEL_SERVICE_RESPO' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'DISPATCH_CANCEL_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_DISP_CAN>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_DISP_CAN> TO FIELD-SYMBOL(<lv_notif_id_DISP_CAN>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_DISP_CAN> TO FIELD-SYMBOL(<fs_resp_prod_list_DISP_CAN>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_DISP_CAN> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_DISP_CAN>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_DISP_CAN> TO FIELD-SYMBOL(<r_gtin_DISP_CAN>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_DISP_CAN> TO FIELD-SYMBOL(<r_bn_DISP_CAN>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DISP_CAN> TO FIELD-SYMBOL(<r_rc_DISP_CAN>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DISP_CAN>).
+                             IF <fs_item_DISP_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_DISP_CAN>-gtin. lv_resp_gtin = <r_gtin_DISP_CAN>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DISP_CAN>-batch = <r_bn_DISP_CAN>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_DISP_CAN>-tran_id AND item_no = @<fs_item_DISP_CAN>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_DISP_CAN>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DISP_CAN>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DISP_CAN>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DISP_CAN>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_DISP_CAN>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_DISP_CAN>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_DISP_CAN>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_DISP_CAN>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DISP_CAN>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_DISP_CAN>-expdate.
+                               IF <lv_notif_id_DISP_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DISP_CAN>. ENDIF.
+                               IF <r_rc_DISP_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DISP_CAN>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DISP_CAN>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DISP_CAN>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_DISP_CAN> IS ASSIGNED AND <r_rc_DISP_CAN> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_DISP_CAN> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_DISP_CAN> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'TRANSFER'.
-                  ASSIGN COMPONENT 'TRANSFER_BATCH_SERVICE_RESPON' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'TRANSFER_BATCH_SERVICE_RESPONS' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_TRAN>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_TRAN> TO FIELD-SYMBOL(<lv_notif_id_TRAN>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_TRAN> TO FIELD-SYMBOL(<fs_resp_prod_list_TRAN>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_TRAN> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_TRAN>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_TRAN> TO FIELD-SYMBOL(<r_gtin_TRAN>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_TRAN> TO FIELD-SYMBOL(<r_bn_TRAN>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_TRAN> TO FIELD-SYMBOL(<r_rc_TRAN>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_TRAN>).
+                             IF <fs_item_TRAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_TRAN>-gtin. lv_resp_gtin = <r_gtin_TRAN>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_TRAN>-batch = <r_bn_TRAN>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_TRAN>-tran_id AND item_no = @<fs_item_TRAN>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_TRAN>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_TRAN>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_TRAN>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_TRAN>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_TRAN>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_TRAN>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_TRAN>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_TRAN>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_TRAN>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_TRAN>-expdate.
+                               IF <lv_notif_id_TRAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_TRAN>. ENDIF.
+                               IF <r_rc_TRAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_TRAN>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_TRAN>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_TRAN>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_TRAN> IS ASSIGNED AND <r_rc_TRAN> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_TRAN> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_TRAN> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'TRANSFER_CANCEL'.
-                  ASSIGN COMPONENT 'TRANSFER_CANCEL_SERVICE_RESPO' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'TRANSFER_CANCEL_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_TRAN_CAN>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_TRAN_CAN> TO FIELD-SYMBOL(<lv_notif_id_TRAN_CAN>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_TRAN_CAN> TO FIELD-SYMBOL(<fs_resp_prod_list_TRAN_CAN>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_TRAN_CAN> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_TRAN_CAN>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_TRAN_CAN> TO FIELD-SYMBOL(<r_gtin_TRAN_CAN>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_TRAN_CAN> TO FIELD-SYMBOL(<r_bn_TRAN_CAN>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_TRAN_CAN> TO FIELD-SYMBOL(<r_rc_TRAN_CAN>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_TRAN_CAN>).
+                             IF <fs_item_TRAN_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_TRAN_CAN>-gtin. lv_resp_gtin = <r_gtin_TRAN_CAN>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_TRAN_CAN>-batch = <r_bn_TRAN_CAN>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_TRAN_CAN>-tran_id AND item_no = @<fs_item_TRAN_CAN>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_TRAN_CAN>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_TRAN_CAN>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_TRAN_CAN>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_TRAN_CAN>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_TRAN_CAN>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_TRAN_CAN>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_TRAN_CAN>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_TRAN_CAN>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_TRAN_CAN>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_TRAN_CAN>-expdate.
+                               IF <lv_notif_id_TRAN_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_TRAN_CAN>. ENDIF.
+                               IF <r_rc_TRAN_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_TRAN_CAN>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_TRAN_CAN>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_TRAN_CAN>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_TRAN_CAN> IS ASSIGNED AND <r_rc_TRAN_CAN> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_TRAN_CAN> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_TRAN_CAN> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'CONSUME'.
-                  ASSIGN COMPONENT 'CONSUME_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'CONSUME_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_CONS>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_CONS> TO FIELD-SYMBOL(<lv_notif_id_CONS>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_CONS> TO FIELD-SYMBOL(<fs_resp_prod_list_CONS>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_CONS> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_CONS>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_CONS> TO FIELD-SYMBOL(<r_gtin_CONS>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_CONS> TO FIELD-SYMBOL(<r_bn_CONS>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_CONS> TO FIELD-SYMBOL(<r_rc_CONS>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_CONS>).
+                             IF <fs_item_CONS>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_CONS>-gtin. lv_resp_gtin = <r_gtin_CONS>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_CONS>-batch = <r_bn_CONS>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_CONS>-tran_id AND item_no = @<fs_item_CONS>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_CONS>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_CONS>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_CONS>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_CONS>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_CONS>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_CONS>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_CONS>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_CONS>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_CONS>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_CONS>-expdate.
+                               IF <lv_notif_id_CONS> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_CONS>. ENDIF.
+                               IF <r_rc_CONS> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_CONS>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_CONS>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_CONS>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_CONS> IS ASSIGNED AND <r_rc_CONS> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_CONS> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_CONS> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'CONSUME_CANCEL'.
-                  ASSIGN COMPONENT 'CONSUME_CANCEL_SERVICE_RESPON' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'CONSUME_CANCEL_SERVICE_RESPONS' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_CONS_CAN>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_CONS_CAN> TO FIELD-SYMBOL(<lv_notif_id_CONS_CAN>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_CONS_CAN> TO FIELD-SYMBOL(<fs_resp_prod_list_CONS_CAN>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_CONS_CAN> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_CONS_CAN>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_CONS_CAN> TO FIELD-SYMBOL(<r_gtin_CONS_CAN>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_CONS_CAN> TO FIELD-SYMBOL(<r_bn_CONS_CAN>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_CONS_CAN> TO FIELD-SYMBOL(<r_rc_CONS_CAN>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_CONS_CAN>).
+                             IF <fs_item_CONS_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_CONS_CAN>-gtin. lv_resp_gtin = <r_gtin_CONS_CAN>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_CONS_CAN>-batch = <r_bn_CONS_CAN>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_CONS_CAN>-tran_id AND item_no = @<fs_item_CONS_CAN>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_CONS_CAN>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_CONS_CAN>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_CONS_CAN>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_CONS_CAN>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_CONS_CAN>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_CONS_CAN>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_CONS_CAN>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_CONS_CAN>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_CONS_CAN>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_CONS_CAN>-expdate.
+                               IF <lv_notif_id_CONS_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_CONS_CAN>. ENDIF.
+                               IF <r_rc_CONS_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_CONS_CAN>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_CONS_CAN>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_CONS_CAN>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_CONS_CAN> IS ASSIGNED AND <r_rc_CONS_CAN> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_CONS_CAN> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_CONS_CAN> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'DRUG_SALE'.
-                  ASSIGN COMPONENT 'PHARMACY_SALE_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'PHARMACY_SALE_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_SALE>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_SALE> TO FIELD-SYMBOL(<lv_notif_id_SALE>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_SALE> TO FIELD-SYMBOL(<fs_resp_prod_list_SALE>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_SALE> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_SALE>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_SALE> TO FIELD-SYMBOL(<r_gtin_SALE>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_SALE> TO FIELD-SYMBOL(<r_bn_SALE>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_SALE> TO FIELD-SYMBOL(<r_rc_SALE>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_SALE>).
+                             IF <fs_item_SALE>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_SALE>-gtin. lv_resp_gtin = <r_gtin_SALE>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_SALE>-batch = <r_bn_SALE>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_SALE>-tran_id AND item_no = @<fs_item_SALE>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_SALE>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_SALE>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_SALE>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_SALE>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_SALE>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_SALE>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_SALE>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_SALE>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_SALE>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_SALE>-expdate.
+                               IF <lv_notif_id_SALE> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_SALE>. ENDIF.
+                               IF <r_rc_SALE> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_SALE>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_SALE>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_SALE>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_SALE> IS ASSIGNED AND <r_rc_SALE> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_SALE> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_SALE> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'DRUG_SALE_CANCEL'.
-                  ASSIGN COMPONENT 'PHARMACY_SALE_CANCEL_SERVICE1' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'PHARMACY_SALE_CANCEL_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_SALE_CAN>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_SALE_CAN> TO FIELD-SYMBOL(<lv_notif_id_SALE_CAN>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_SALE_CAN> TO FIELD-SYMBOL(<fs_resp_prod_list_SALE_CAN>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_SALE_CAN> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_SALE_CAN>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_SALE_CAN> TO FIELD-SYMBOL(<r_gtin_SALE_CAN>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_SALE_CAN> TO FIELD-SYMBOL(<r_bn_SALE_CAN>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_SALE_CAN> TO FIELD-SYMBOL(<r_rc_SALE_CAN>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_SALE_CAN>).
+                             IF <fs_item_SALE_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_SALE_CAN>-gtin. lv_resp_gtin = <r_gtin_SALE_CAN>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_SALE_CAN>-batch = <r_bn_SALE_CAN>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_SALE_CAN>-tran_id AND item_no = @<fs_item_SALE_CAN>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_SALE_CAN>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_SALE_CAN>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_SALE_CAN>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_SALE_CAN>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_SALE_CAN>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_SALE_CAN>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_SALE_CAN>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_SALE_CAN>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_SALE_CAN>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_SALE_CAN>-expdate.
+                               IF <lv_notif_id_SALE_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_SALE_CAN>. ENDIF.
+                               IF <r_rc_SALE_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_SALE_CAN>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_SALE_CAN>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_SALE_CAN>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_SALE_CAN> IS ASSIGNED AND <r_rc_SALE_CAN> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_SALE_CAN> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_SALE_CAN> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
                 WHEN 'DEACTIVATE'.
-                  ASSIGN COMPONENT 'DEACTIVATE_SERVICE_RESPONSE' OF STRUCTURE <fs_response> TO <fs_resp>.
+                  ASSIGN COMPONENT 'DEACTIVATION_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_DEAC>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_DEAC> TO FIELD-SYMBOL(<lv_notif_id_DEAC>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_DEAC> TO FIELD-SYMBOL(<fs_resp_prod_list_DEAC>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_DEAC> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_DEAC>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_DEAC> TO FIELD-SYMBOL(<r_gtin_DEAC>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_DEAC> TO FIELD-SYMBOL(<r_bn_DEAC>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DEAC> TO FIELD-SYMBOL(<r_rc_DEAC>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DEAC>).
+                             IF <fs_item_DEAC>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_DEAC>-gtin. lv_resp_gtin = <r_gtin_DEAC>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DEAC>-batch = <r_bn_DEAC>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_DEAC>-tran_id AND item_no = @<fs_item_DEAC>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_DEAC>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DEAC>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DEAC>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DEAC>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_DEAC>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_DEAC>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_DEAC>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_DEAC>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DEAC>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_DEAC>-expdate.
+                               IF <lv_notif_id_DEAC> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DEAC>. ENDIF.
+                               IF <r_rc_DEAC> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DEAC>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DEAC>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DEAC>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_DEAC> IS ASSIGNED AND <r_rc_DEAC> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_DEAC> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_DEAC> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
+                WHEN 'DEACTIVATE_CANCEL'.
+                  ASSIGN COMPONENT 'DEACTIVATION_CANCEL_RESPONSE' OF STRUCTURE <fs_response> TO FIELD-SYMBOL(<fs_resp_DEAC_CAN>).
+                  IF sy-subrc = 0.
+                    ASSIGN COMPONENT 'NOTIFICATIONID' OF STRUCTURE <fs_resp_DEAC_CAN> TO FIELD-SYMBOL(<lv_notif_id_DEAC_CAN>).
+                    ASSIGN COMPONENT 'PRODUCTLIST' OF STRUCTURE <fs_resp_DEAC_CAN> TO FIELD-SYMBOL(<fs_resp_prod_list_DEAC_CAN>).
+                    IF sy-subrc = 0.
+                      ASSIGN COMPONENT 'PRODUCT' OF STRUCTURE <fs_resp_prod_list_DEAC_CAN> TO <lt_resp_products>.
+                      IF sy-subrc = 0.
+                        LOOP AT <lt_resp_products> ASSIGNING FIELD-SYMBOL(<ls_resp_prod_DEAC_CAN>).
+                           ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_resp_prod_DEAC_CAN> TO FIELD-SYMBOL(<r_gtin_DEAC_CAN>).
+                           ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_resp_prod_DEAC_CAN> TO FIELD-SYMBOL(<r_bn_DEAC_CAN>).
+                           ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DEAC_CAN> TO FIELD-SYMBOL(<r_rc_DEAC_CAN>).
+
+                           LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DEAC_CAN>).
+                             IF <fs_item_DEAC_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+
+                             lv_item_gtin = <fs_item_DEAC_CAN>-gtin. lv_resp_gtin = <r_gtin_DEAC_CAN>.
+                             SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
+                             SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
+
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DEAC_CAN>-batch = <r_bn_DEAC_CAN>.
+                               SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
+                                 WHERE tran_id = @<fs_item_DEAC_CAN>-tran_id AND item_no = @<fs_item_DEAC_CAN>-item_no.
+
+                               ls_processed_dttsit2-mandt = sy-mandt.
+                               ls_processed_dttsit2-tran_id = <fs_item_DEAC_CAN>-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DEAC_CAN>-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DEAC_CAN>-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DEAC_CAN>-product.
+                               ls_processed_dttsit2-prod_name = <fs_item_DEAC_CAN>-prodname.
+                               ls_processed_dttsit2-prod_qty = <fs_item_DEAC_CAN>-prodqty.
+                               ls_processed_dttsit2-prod_unit = <fs_item_DEAC_CAN>-produnit.
+                               ls_processed_dttsit2-gtin = <fs_item_DEAC_CAN>-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DEAC_CAN>-batch.
+                               ls_processed_dttsit2-exp_date = <fs_item_DEAC_CAN>-expdate.
+                               IF <lv_notif_id_DEAC_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DEAC_CAN>. ENDIF.
+                               IF <r_rc_DEAC_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DEAC_CAN>. ENDIF.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DEAC_CAN>-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DEAC_CAN>-mvttype.
+                               IF lt_header IS NOT INITIAL.
+                                 ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
+                                 ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
+                                 ls_processed_dttsit2-to_gln = lt_header[ 1 ]-to_gln.
+                               ENDIF.
+                               IF <r_rc_DEAC_CAN> IS ASSIGNED AND <r_rc_DEAC_CAN> = '00000'. ls_processed_dttsit2-prod_stat = 'SUCCESS'.
+                               ELSE. ls_processed_dttsit2-prod_stat = 'ERROR'. lv_all_success = abap_false. ENDIF.
+
+                               IF <r_rc_DEAC_CAN> IS ASSIGNED. me->get_error_description( EXPORTING p_error_code = CONV #( <r_rc_DEAC_CAN> ) IMPORTING p_description = lv_desc ). ENDIF.
+                               ls_processed_dttsit2-trans_stat = lv_desc.
+                               ls_processed_dttsit2-changed_date = sy-datum.
+                               ls_processed_dttsit2-changed_time = sy-uzeit.
+                               ls_processed_dttsit2-changed_by = sy-uname.
+
+                               APPEND ls_processed_dttsit2 TO et_update_buffer.
+                             ENDIF.
+                           ENDLOOP.
+                        ENDLOOP.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
                 WHEN OTHERS.
               ENDCASE.
 
