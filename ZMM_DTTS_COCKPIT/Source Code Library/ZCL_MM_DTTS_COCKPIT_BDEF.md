@@ -528,7 +528,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_ACCEPT).
+                          LOOP AT lt_items INTO DATA(ls_item_ACC).
                             IF ls_item_ACC-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_ACC-gtin ) p_quantity_in = CONV #( ls_item_ACC-prod_qty ) p_batch_in = CONV #( ls_item_ACC-batch ) p_exp_date_in = CONV #( ls_item_ACC-exp_date )
@@ -620,7 +620,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_RETURN).
+                          LOOP AT lt_items INTO DATA(ls_item_RET).
                             IF ls_item_RET-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_RET-gtin ) p_quantity_in = CONV #( ls_item_RET-prod_qty ) p_batch_in = CONV #( ls_item_RET-batch ) p_exp_date_in = CONV #( ls_item_RET-exp_date )
@@ -712,7 +712,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_DISPATCH).
+                          LOOP AT lt_items INTO DATA(ls_item_DISP).
                             IF ls_item_DISP-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP-gtin ) p_quantity_in = CONV #( ls_item_DISP-prod_qty ) p_batch_in = CONV #( ls_item_DISP-batch ) p_exp_date_in = CONV #( ls_item_DISP-exp_date )
@@ -804,7 +804,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_DISPATCH_CANCEL).
+                          LOOP AT lt_items INTO DATA(ls_item_DISP_CAN).
                             IF ls_item_DISP_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP_CAN-gtin ) p_quantity_in = CONV #( ls_item_DISP_CAN-prod_qty ) p_batch_in = CONV #( ls_item_DISP_CAN-batch ) p_exp_date_in = CONV #( ls_item_DISP_CAN-exp_date )
@@ -896,7 +896,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_TRANSFER).
+                          LOOP AT lt_items INTO DATA(ls_item_TRAN).
                             IF ls_item_TRAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN-gtin ) p_quantity_in = CONV #( ls_item_TRAN-prod_qty ) p_batch_in = CONV #( ls_item_TRAN-batch ) p_exp_date_in = CONV #( ls_item_TRAN-exp_date )
@@ -988,7 +988,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_TRANSFER_CANCEL).
+                          LOOP AT lt_items INTO DATA(ls_item_TRAN_CAN).
                             IF ls_item_TRAN_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN_CAN-gtin ) p_quantity_in = CONV #( ls_item_TRAN_CAN-prod_qty ) p_batch_in = CONV #( ls_item_TRAN_CAN-batch ) p_exp_date_in = CONV #( ls_item_TRAN_CAN-exp_date )
@@ -1080,7 +1080,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_CONSUME).
+                          LOOP AT lt_items INTO DATA(ls_item_CONS).
                             IF ls_item_CONS-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS-gtin ) p_quantity_in = CONV #( ls_item_CONS-prod_qty ) p_batch_in = CONV #( ls_item_CONS-batch ) p_exp_date_in = CONV #( ls_item_CONS-exp_date )
@@ -1172,7 +1172,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_CONSUME_CANCEL).
+                          LOOP AT lt_items INTO DATA(ls_item_CONS_CAN).
                             IF ls_item_CONS_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS_CAN-gtin ) p_quantity_in = CONV #( ls_item_CONS_CAN-prod_qty ) p_batch_in = CONV #( ls_item_CONS_CAN-batch ) p_exp_date_in = CONV #( ls_item_CONS_CAN-exp_date )
@@ -1264,7 +1264,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_DRUG_SALE).
+                          LOOP AT lt_items INTO DATA(ls_item_SALE).
                             IF ls_item_SALE-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE-gtin ) p_quantity_in = CONV #( ls_item_SALE-prod_qty ) p_batch_in = CONV #( ls_item_SALE-batch ) p_exp_date_in = CONV #( ls_item_SALE-exp_date )
@@ -1356,7 +1356,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_DRUG_SALE_CANCEL).
+                          LOOP AT lt_items INTO DATA(ls_item_SALE_CAN).
                             IF ls_item_SALE_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE_CAN-gtin ) p_quantity_in = CONV #( ls_item_SALE_CAN-prod_qty ) p_batch_in = CONV #( ls_item_SALE_CAN-batch ) p_exp_date_in = CONV #( ls_item_SALE_CAN-exp_date )
@@ -1448,7 +1448,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_DEACTIVATE).
+                          LOOP AT lt_items INTO DATA(ls_item_DEAC).
                             IF ls_item_DEAC-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC-gtin ) p_quantity_in = CONV #( ls_item_DEAC-prod_qty ) p_batch_in = CONV #( ls_item_DEAC-batch ) p_exp_date_in = CONV #( ls_item_DEAC-exp_date )
@@ -1540,7 +1540,7 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_table_desc ?= cl_abap_typedescr=>describe_by_data( <lt_products> ).
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
-                          LOOP AT lt_items INTO DATA(ls_item_DEACTIVATE_CANCEL).
+                          LOOP AT lt_items INTO DATA(ls_item_DEAC_CAN).
                             IF ls_item_DEAC_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
                             me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC_CAN-gtin ) p_quantity_in = CONV #( ls_item_DEAC_CAN-prod_qty ) p_batch_in = CONV #( ls_item_DEAC_CAN-batch ) p_exp_date_in = CONV #( ls_item_DEAC_CAN-exp_date )
