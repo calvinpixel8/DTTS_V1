@@ -208,11 +208,11 @@ CLASS lhc_Item IMPLEMENTATION.
             <fs_buf>-zeile = ls_proc-zeile.
             <fs_buf>-product = ls_proc-product.
             <fs_buf>-prod_name = ls_proc-prod_name.
-            <fs_buf>-prod_qty = ls_proc-prod_qty.
+            <fs_buf>-prodqty = ls_proc-prodqty.
             <fs_buf>-prod_unit = ls_proc-prod_unit.
             <fs_buf>-gtin = ls_proc-gtin.
             <fs_buf>-batch = ls_proc-batch.
-            <fs_buf>-exp_date = ls_proc-exp_date.
+            <fs_buf>-expdate = ls_proc-expdate.
             <fs_buf>-notif_id = ls_proc-notif_id.
             <fs_buf>-tr_response = ls_proc-tr_response.
             <fs_buf>-mat_doc = ls_proc-mat_doc.
@@ -231,11 +231,11 @@ CLASS lhc_Item IMPLEMENTATION.
                <fs_create>-zeile = ls_proc-zeile.
                <fs_create>-product = ls_proc-product.
                <fs_create>-prod_name = ls_proc-prod_name.
-               <fs_create>-prod_qty = ls_proc-prod_qty.
+               <fs_create>-prodqty = ls_proc-prodqty.
                <fs_create>-prod_unit = ls_proc-prod_unit.
                <fs_create>-gtin = ls_proc-gtin.
                <fs_create>-batch = ls_proc-batch.
-               <fs_create>-exp_date = ls_proc-exp_date.
+               <fs_create>-expdate = ls_proc-expdate.
                <fs_create>-notif_id = ls_proc-notif_id.
                <fs_create>-tr_response = ls_proc-tr_response.
                <fs_create>-mat_doc = ls_proc-mat_doc.
@@ -295,11 +295,11 @@ CLASS lhc_Item IMPLEMENTATION.
             <fs_buf>-zeile = ls_proc-zeile.
             <fs_buf>-product = ls_proc-product.
             <fs_buf>-prod_name = ls_proc-prod_name.
-            <fs_buf>-prod_qty = ls_proc-prod_qty.
+            <fs_buf>-prodqty = ls_proc-prodqty.
             <fs_buf>-prod_unit = ls_proc-prod_unit.
             <fs_buf>-gtin = ls_proc-gtin.
             <fs_buf>-batch = ls_proc-batch.
-            <fs_buf>-exp_date = ls_proc-exp_date.
+            <fs_buf>-expdate = ls_proc-expdate.
             <fs_buf>-notif_id = ls_proc-notif_id.
             <fs_buf>-tr_response = ls_proc-tr_response.
             <fs_buf>-mat_doc = ls_proc-mat_doc.
@@ -329,21 +329,21 @@ CLASS lhc_Item IMPLEMENTATION.
 
   METHOD populate_full_error_record.
      SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @rs_err
-       WHERE tran_id = @is_item-tran_id AND item_no = @is_item-item_no.
+       WHERE tran_id = @is_item-%data-tran_id AND item_no = @is_item-%data-item_no.
 
      rs_err-mandt = sy-mandt.
-     rs_err-tran_id = is_item-tran_id.
-     rs_err-item_no = is_item-item_no.
-     rs_err-zeile = is_item-zeile.
-     rs_err-product = is_item-product.
-     rs_err-prod_name = is_item-prodname.
-     rs_err-prod_qty = is_item-prodqty.
-     rs_err-prod_unit = is_item-produnit.
-     rs_err-gtin = is_item-gtin.
-     rs_err-batch = is_item-batch.
-     rs_err-exp_date = is_item-expdate.
-     rs_err-mat_doc = is_item-matdoc.
-     rs_err-mvt_type = is_item-mvttype.
+     rs_err-tran_id = is_item-%data-tran_id.
+     rs_err-item_no = is_item-%data-item_no.
+     rs_err-zeile = is_item-%data-zeile.
+     rs_err-product = is_item-%data-product.
+     rs_err-prod_name = is_item-%data-prodname.
+     rs_err-prodqty = is_item-%data-prodqty.
+     rs_err-prod_unit = is_item-%data-produnit.
+     rs_err-gtin = is_item-%data-gtin.
+     rs_err-batch = is_item-%data-batch.
+     rs_err-expdate = is_item-%data-expdate.
+     rs_err-mat_doc = is_item-%data-matdoc.
+     rs_err-mvt_type = is_item-%data-mvttype.
 
      IF it_header IS NOT INITIAL.
        ASSIGN it_header[ 1 ] TO FIELD-SYMBOL(<fs_hdr>).
@@ -426,13 +426,13 @@ CLASS lhc_Item IMPLEMENTATION.
         READ TABLE lcl_buffer=>mt_create INTO DATA(ls_buf) WITH KEY tran_id = lv_t item_no = ls_k-item_no.
         IF sy-subrc = 0.
            ls_item_st = CORRESPONDING #( ls_buf MAPPING prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
-           ls_item_st-doc_year = ls_k-doc_year.
+           ls_item_st-%data-doc_year = ls_k-doc_year.
            APPEND ls_item_st TO lt_items.
         ELSE.
            READ TABLE lcl_buffer=>mt_update INTO ls_buf WITH KEY tran_id = lv_t item_no = ls_k-item_no.
            IF sy-subrc = 0.
              ls_item_st = CORRESPONDING #( ls_buf MAPPING prodname = prod_name prodqty = prod_qty produnit = prod_unit expdate = exp_date notifid = notif_id trresponse = tr_response srnumber = sr_number createddate = created_date createdtime = created_time createdby = created_by changeddate = changed_date changedtime = changed_time changedby = changed_by prodstat = prod_stat transstat = trans_stat ).
-             ls_item_st-doc_year = ls_k-doc_year.
+             ls_item_st-%data-doc_year = ls_k-doc_year.
              APPEND ls_item_st TO lt_items.
            ELSE.
              SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_db)
@@ -529,9 +529,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_ACC).
-                            IF ls_item_ACC-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_ACC-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_ACC-gtin ) p_quantity_in = CONV #( ls_item_ACC-prod_qty ) p_batch_in = CONV #( ls_item_ACC-batch ) p_exp_date_in = CONV #( ls_item_ACC-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_ACC-%data-gtin ) p_quantity_in = CONV #( ls_item_ACC-%data-prodqty ) p_batch_in = CONV #( ls_item_ACC-%data-batch ) p_exp_date_in = CONV #( ls_item_ACC-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -540,8 +540,7 @@ CLASS lhc_Item IMPLEMENTATION.
                             ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_gtin_ACC>).
                             IF sy-subrc = 0. <l_gtin_ACC> = lv_gtin_fmt. ENDIF.
 
-                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_sn_ACC>).
-                            IF sy-subrc = 0. <l_sn_ACC> = ls_item_ACC-sr_number. ENDIF.
+
 
                             ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_ACC> TO FIELD-SYMBOL(<l_qty_ACC>).
                             IF sy-subrc = 0. <l_qty_ACC> = lv_qty_fmt. ENDIF.
@@ -564,11 +563,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'RETURN_BATCH_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_RET>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_fromgln_RET>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_RET> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_RET> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_RET> TO FIELD-SYMBOL(<lv_togln_RET>).
                 IF sy-subrc = 0.
@@ -621,9 +616,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_RET).
-                            IF ls_item_RET-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_RET-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_RET-gtin ) p_quantity_in = CONV #( ls_item_RET-prod_qty ) p_batch_in = CONV #( ls_item_RET-batch ) p_exp_date_in = CONV #( ls_item_RET-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_RET-%data-gtin ) p_quantity_in = CONV #( ls_item_RET-%data-prodqty ) p_batch_in = CONV #( ls_item_RET-%data-batch ) p_exp_date_in = CONV #( ls_item_RET-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -632,8 +627,7 @@ CLASS lhc_Item IMPLEMENTATION.
                             ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_gtin_RET>).
                             IF sy-subrc = 0. <l_gtin_RET> = lv_gtin_fmt. ENDIF.
 
-                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_sn_RET>).
-                            IF sy-subrc = 0. <l_sn_RET> = ls_item_RET-sr_number. ENDIF.
+
 
                             ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_RET> TO FIELD-SYMBOL(<l_qty_RET>).
                             IF sy-subrc = 0. <l_qty_RET> = lv_qty_fmt. ENDIF.
@@ -656,11 +650,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'DISPATCH_BATCH_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DISP>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_fromgln_DISP>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DISP> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DISP> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DISP> TO FIELD-SYMBOL(<lv_togln_DISP>).
                 IF sy-subrc = 0.
@@ -713,9 +703,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_DISP).
-                            IF ls_item_DISP-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_DISP-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP-gtin ) p_quantity_in = CONV #( ls_item_DISP-prod_qty ) p_batch_in = CONV #( ls_item_DISP-batch ) p_exp_date_in = CONV #( ls_item_DISP-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP-%data-gtin ) p_quantity_in = CONV #( ls_item_DISP-%data-prodqty ) p_batch_in = CONV #( ls_item_DISP-%data-batch ) p_exp_date_in = CONV #( ls_item_DISP-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -724,8 +714,7 @@ CLASS lhc_Item IMPLEMENTATION.
                             ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_gtin_DISP>).
                             IF sy-subrc = 0. <l_gtin_DISP> = lv_gtin_fmt. ENDIF.
 
-                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_sn_DISP>).
-                            IF sy-subrc = 0. <l_sn_DISP> = ls_item_DISP-sr_number. ENDIF.
+
 
                             ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DISP> TO FIELD-SYMBOL(<l_qty_DISP>).
                             IF sy-subrc = 0. <l_qty_DISP> = lv_qty_fmt. ENDIF.
@@ -748,11 +737,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'DISPATCH_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DISP_CAN>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_fromgln_DISP_CAN>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DISP_CAN> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DISP_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DISP_CAN> TO FIELD-SYMBOL(<lv_togln_DISP_CAN>).
                 IF sy-subrc = 0.
@@ -805,9 +790,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_DISP_CAN).
-                            IF ls_item_DISP_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_DISP_CAN-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP_CAN-gtin ) p_quantity_in = CONV #( ls_item_DISP_CAN-prod_qty ) p_batch_in = CONV #( ls_item_DISP_CAN-batch ) p_exp_date_in = CONV #( ls_item_DISP_CAN-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DISP_CAN-%data-gtin ) p_quantity_in = CONV #( ls_item_DISP_CAN-%data-prodqty ) p_batch_in = CONV #( ls_item_DISP_CAN-%data-batch ) p_exp_date_in = CONV #( ls_item_DISP_CAN-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -817,10 +802,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_DISP_CAN> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_sn_DISP_CAN>).
-                            IF sy-subrc = 0. <l_sn_DISP_CAN> = ls_item_DISP_CAN-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_DISP_CAN> = ls_item_DISP_CAN-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_qty_DISP_CAN>).
-                            IF sy-subrc = 0. <l_qty_DISP_CAN> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DISP_CAN> TO FIELD-SYMBOL(<l_bn_DISP_CAN>).
                             IF sy-subrc = 0. <l_bn_DISP_CAN> = lv_batch_fmt. ENDIF.
@@ -840,11 +824,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'TRANSFER_BATCH_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_TRAN>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_fromgln_TRAN>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_TRAN> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_TRAN> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_TRAN> TO FIELD-SYMBOL(<lv_togln_TRAN>).
                 IF sy-subrc = 0.
@@ -897,9 +877,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_TRAN).
-                            IF ls_item_TRAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_TRAN-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN-gtin ) p_quantity_in = CONV #( ls_item_TRAN-prod_qty ) p_batch_in = CONV #( ls_item_TRAN-batch ) p_exp_date_in = CONV #( ls_item_TRAN-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN-%data-gtin ) p_quantity_in = CONV #( ls_item_TRAN-%data-prodqty ) p_batch_in = CONV #( ls_item_TRAN-%data-batch ) p_exp_date_in = CONV #( ls_item_TRAN-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -908,8 +888,7 @@ CLASS lhc_Item IMPLEMENTATION.
                             ASSIGN COMPONENT 'GTIN' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_gtin_TRAN>).
                             IF sy-subrc = 0. <l_gtin_TRAN> = lv_gtin_fmt. ENDIF.
 
-                            ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_sn_TRAN>).
-                            IF sy-subrc = 0. <l_sn_TRAN> = ls_item_TRAN-sr_number. ENDIF.
+
 
                             ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_TRAN> TO FIELD-SYMBOL(<l_qty_TRAN>).
                             IF sy-subrc = 0. <l_qty_TRAN> = lv_qty_fmt. ENDIF.
@@ -932,11 +911,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'TRANSFER_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_TRAN_CAN>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_fromgln_TRAN_CAN>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_TRAN_CAN> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_TRAN_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_TRAN_CAN> TO FIELD-SYMBOL(<lv_togln_TRAN_CAN>).
                 IF sy-subrc = 0.
@@ -989,9 +964,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_TRAN_CAN).
-                            IF ls_item_TRAN_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_TRAN_CAN-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN_CAN-gtin ) p_quantity_in = CONV #( ls_item_TRAN_CAN-prod_qty ) p_batch_in = CONV #( ls_item_TRAN_CAN-batch ) p_exp_date_in = CONV #( ls_item_TRAN_CAN-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_TRAN_CAN-%data-gtin ) p_quantity_in = CONV #( ls_item_TRAN_CAN-%data-prodqty ) p_batch_in = CONV #( ls_item_TRAN_CAN-%data-batch ) p_exp_date_in = CONV #( ls_item_TRAN_CAN-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1001,10 +976,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_TRAN_CAN> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_sn_TRAN_CAN>).
-                            IF sy-subrc = 0. <l_sn_TRAN_CAN> = ls_item_TRAN_CAN-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_TRAN_CAN> = ls_item_TRAN_CAN-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_qty_TRAN_CAN>).
-                            IF sy-subrc = 0. <l_qty_TRAN_CAN> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_TRAN_CAN> TO FIELD-SYMBOL(<l_bn_TRAN_CAN>).
                             IF sy-subrc = 0. <l_bn_TRAN_CAN> = lv_batch_fmt. ENDIF.
@@ -1024,11 +998,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'CONSUME_SERVICE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_CONS>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_fromgln_CONS>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_CONS> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_CONS> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_CONS> TO FIELD-SYMBOL(<lv_togln_CONS>).
                 IF sy-subrc = 0.
@@ -1081,9 +1051,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_CONS).
-                            IF ls_item_CONS-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_CONS-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS-gtin ) p_quantity_in = CONV #( ls_item_CONS-prod_qty ) p_batch_in = CONV #( ls_item_CONS-batch ) p_exp_date_in = CONV #( ls_item_CONS-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS-%data-gtin ) p_quantity_in = CONV #( ls_item_CONS-%data-prodqty ) p_batch_in = CONV #( ls_item_CONS-%data-batch ) p_exp_date_in = CONV #( ls_item_CONS-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1093,10 +1063,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_CONS> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_sn_CONS>).
-                            IF sy-subrc = 0. <l_sn_CONS> = ls_item_CONS-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_CONS> = ls_item_CONS-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_qty_CONS>).
-                            IF sy-subrc = 0. <l_qty_CONS> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_CONS> TO FIELD-SYMBOL(<l_bn_CONS>).
                             IF sy-subrc = 0. <l_bn_CONS> = lv_batch_fmt. ENDIF.
@@ -1116,11 +1085,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'CONSUME_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_CONS_CAN>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_fromgln_CONS_CAN>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_CONS_CAN> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_CONS_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_CONS_CAN> TO FIELD-SYMBOL(<lv_togln_CONS_CAN>).
                 IF sy-subrc = 0.
@@ -1173,9 +1138,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_CONS_CAN).
-                            IF ls_item_CONS_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_CONS_CAN-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS_CAN-gtin ) p_quantity_in = CONV #( ls_item_CONS_CAN-prod_qty ) p_batch_in = CONV #( ls_item_CONS_CAN-batch ) p_exp_date_in = CONV #( ls_item_CONS_CAN-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_CONS_CAN-%data-gtin ) p_quantity_in = CONV #( ls_item_CONS_CAN-%data-prodqty ) p_batch_in = CONV #( ls_item_CONS_CAN-%data-batch ) p_exp_date_in = CONV #( ls_item_CONS_CAN-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1185,10 +1150,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_CONS_CAN> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_sn_CONS_CAN>).
-                            IF sy-subrc = 0. <l_sn_CONS_CAN> = ls_item_CONS_CAN-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_CONS_CAN> = ls_item_CONS_CAN-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_qty_CONS_CAN>).
-                            IF sy-subrc = 0. <l_qty_CONS_CAN> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_CONS_CAN> TO FIELD-SYMBOL(<l_bn_CONS_CAN>).
                             IF sy-subrc = 0. <l_bn_CONS_CAN> = lv_batch_fmt. ENDIF.
@@ -1208,11 +1172,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'PHARMACY_SALE' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_SALE>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_fromgln_SALE>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_SALE> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_SALE> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_SALE> TO FIELD-SYMBOL(<lv_togln_SALE>).
                 IF sy-subrc = 0.
@@ -1265,9 +1225,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_SALE).
-                            IF ls_item_SALE-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_SALE-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE-gtin ) p_quantity_in = CONV #( ls_item_SALE-prod_qty ) p_batch_in = CONV #( ls_item_SALE-batch ) p_exp_date_in = CONV #( ls_item_SALE-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE-%data-gtin ) p_quantity_in = CONV #( ls_item_SALE-%data-prodqty ) p_batch_in = CONV #( ls_item_SALE-%data-batch ) p_exp_date_in = CONV #( ls_item_SALE-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1277,10 +1237,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_SALE> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_sn_SALE>).
-                            IF sy-subrc = 0. <l_sn_SALE> = ls_item_SALE-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_SALE> = ls_item_SALE-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_qty_SALE>).
-                            IF sy-subrc = 0. <l_qty_SALE> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_SALE> TO FIELD-SYMBOL(<l_bn_SALE>).
                             IF sy-subrc = 0. <l_bn_SALE> = lv_batch_fmt. ENDIF.
@@ -1300,11 +1259,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'PHARMACY_SALE_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_SALE_CAN>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_fromgln_SALE_CAN>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_SALE_CAN> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_SALE_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_SALE_CAN> TO FIELD-SYMBOL(<lv_togln_SALE_CAN>).
                 IF sy-subrc = 0.
@@ -1357,9 +1312,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_SALE_CAN).
-                            IF ls_item_SALE_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_SALE_CAN-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE_CAN-gtin ) p_quantity_in = CONV #( ls_item_SALE_CAN-prod_qty ) p_batch_in = CONV #( ls_item_SALE_CAN-batch ) p_exp_date_in = CONV #( ls_item_SALE_CAN-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_SALE_CAN-%data-gtin ) p_quantity_in = CONV #( ls_item_SALE_CAN-%data-prodqty ) p_batch_in = CONV #( ls_item_SALE_CAN-%data-batch ) p_exp_date_in = CONV #( ls_item_SALE_CAN-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1369,10 +1324,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_SALE_CAN> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_sn_SALE_CAN>).
-                            IF sy-subrc = 0. <l_sn_SALE_CAN> = ls_item_SALE_CAN-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_SALE_CAN> = ls_item_SALE_CAN-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_qty_SALE_CAN>).
-                            IF sy-subrc = 0. <l_qty_SALE_CAN> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_SALE_CAN> TO FIELD-SYMBOL(<l_bn_SALE_CAN>).
                             IF sy-subrc = 0. <l_bn_SALE_CAN> = lv_batch_fmt. ENDIF.
@@ -1392,11 +1346,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'DEACTIVATION_REQUEST' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DEAC>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_fromgln_DEAC>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DEAC> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DEAC> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DEAC> TO FIELD-SYMBOL(<lv_togln_DEAC>).
                 IF sy-subrc = 0.
@@ -1449,9 +1399,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_DEAC).
-                            IF ls_item_DEAC-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_DEAC-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC-gtin ) p_quantity_in = CONV #( ls_item_DEAC-prod_qty ) p_batch_in = CONV #( ls_item_DEAC-batch ) p_exp_date_in = CONV #( ls_item_DEAC-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC-%data-gtin ) p_quantity_in = CONV #( ls_item_DEAC-%data-prodqty ) p_batch_in = CONV #( ls_item_DEAC-%data-batch ) p_exp_date_in = CONV #( ls_item_DEAC-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1461,10 +1411,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_DEAC> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_sn_DEAC>).
-                            IF sy-subrc = 0. <l_sn_DEAC> = ls_item_DEAC-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_DEAC> = ls_item_DEAC-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_qty_DEAC>).
-                            IF sy-subrc = 0. <l_qty_DEAC> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DEAC> TO FIELD-SYMBOL(<l_bn_DEAC>).
                             IF sy-subrc = 0. <l_bn_DEAC> = lv_batch_fmt. ENDIF.
@@ -1484,11 +1433,7 @@ CLASS lhc_Item IMPLEMENTATION.
               ASSIGN COMPONENT 'DEACTIVATION_CANCEL' OF STRUCTURE <fs_request> TO FIELD-SYMBOL(<fs_req_DEAC_CAN>).
               IF sy-subrc = 0.
                 " --- GLN Assignments ---
-                ASSIGN COMPONENT 'FROMGLN' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_fromgln_DEAC_CAN>).
-                IF sy-subrc = 0.
-                   IF lt_items[ 1 ]-frm_gln IS NOT INITIAL. <lv_fromgln_DEAC_CAN> = lt_items[ 1 ]-frm_gln.
-                   ELSEIF lt_header IS NOT INITIAL. <lv_fromgln_DEAC_CAN> = lt_header[ 1 ]-frm_gln. ENDIF.
-                ENDIF.
+
 
                 ASSIGN COMPONENT 'TOGLN' OF STRUCTURE <fs_req_DEAC_CAN> TO FIELD-SYMBOL(<lv_togln_DEAC_CAN>).
                 IF sy-subrc = 0.
@@ -1541,9 +1486,9 @@ CLASS lhc_Item IMPLEMENTATION.
                           lo_line_desc = lo_table_desc->get_table_line_type( ).
 
                           LOOP AT lt_items INTO DATA(ls_item_DEAC_CAN).
-                            IF ls_item_DEAC_CAN-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                            IF ls_item_DEAC_CAN-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC_CAN-gtin ) p_quantity_in = CONV #( ls_item_DEAC_CAN-prod_qty ) p_batch_in = CONV #( ls_item_DEAC_CAN-batch ) p_exp_date_in = CONV #( ls_item_DEAC_CAN-exp_date )
+                            me->format_data( EXPORTING p_gtin_in = CONV #( ls_item_DEAC_CAN-%data-gtin ) p_quantity_in = CONV #( ls_item_DEAC_CAN-%data-prodqty ) p_batch_in = CONV #( ls_item_DEAC_CAN-%data-batch ) p_exp_date_in = CONV #( ls_item_DEAC_CAN-%data-expdate )
                                              IMPORTING p_gtin_out = lv_gtin_fmt p_quantity_out = lv_qty_fmt p_batch_out = lv_batch_fmt p_exp_date_out = lv_exp_fmt ).
 
                             CREATE DATA dref_line TYPE HANDLE lo_line_desc.
@@ -1553,10 +1498,9 @@ CLASS lhc_Item IMPLEMENTATION.
                             IF sy-subrc = 0. <l_gtin_DEAC_CAN> = lv_gtin_fmt. ENDIF.
 
                             ASSIGN COMPONENT 'SN' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_sn_DEAC_CAN>).
-                            IF sy-subrc = 0. <l_sn_DEAC_CAN> = ls_item_DEAC_CAN-sr_number. ENDIF.
+                            IF sy-subrc = 0. <l_sn_DEAC_CAN> = ls_item_DEAC_CAN-%data-srnumber. ENDIF.
 
-                            ASSIGN COMPONENT 'QUANTITY' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_qty_DEAC_CAN>).
-                            IF sy-subrc = 0. <l_qty_DEAC_CAN> = lv_qty_fmt. ENDIF.
+
 
                             ASSIGN COMPONENT 'BN' OF STRUCTURE <ls_product_line_DEAC_CAN> TO FIELD-SYMBOL(<l_bn_DEAC_CAN>).
                             IF sy-subrc = 0. <l_bn_DEAC_CAN> = lv_batch_fmt. ENDIF.
@@ -1609,31 +1553,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_ACC> TO FIELD-SYMBOL(<r_rc_ACC>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_ACC>).
-                             IF <fs_item_ACC>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_ACC>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_ACC>-gtin. lv_resp_gtin = <r_gtin_ACC>.
+                             lv_item_gtin = <fs_item_ACC>-%data-gtin. lv_resp_gtin = <r_gtin_ACC>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_ACC>-batch = <r_bn_ACC>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_ACC>-%data-batch = <r_bn_ACC>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_ACC>-tran_id AND item_no = @<fs_item_ACC>-item_no.
+                                 WHERE tran_id = @<fs_item_ACC>-%data-tran_id AND item_no = @<fs_item_ACC>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_ACC>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_ACC>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_ACC>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_ACC>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_ACC>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_ACC>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_ACC>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_ACC>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_ACC>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_ACC>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_ACC>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_ACC>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_ACC>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_ACC>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_ACC>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_ACC>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_ACC>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_ACC>-%data-expdate.
                                IF <lv_notif_id_ACC> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_ACC>. ENDIF.
                                IF <r_rc_ACC> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_ACC>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_ACC>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_ACC>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_ACC>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_ACC>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -1670,31 +1614,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_RET> TO FIELD-SYMBOL(<r_rc_RET>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_RET>).
-                             IF <fs_item_RET>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_RET>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_RET>-gtin. lv_resp_gtin = <r_gtin_RET>.
+                             lv_item_gtin = <fs_item_RET>-%data-gtin. lv_resp_gtin = <r_gtin_RET>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_RET>-batch = <r_bn_RET>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_RET>-%data-batch = <r_bn_RET>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_RET>-tran_id AND item_no = @<fs_item_RET>-item_no.
+                                 WHERE tran_id = @<fs_item_RET>-%data-tran_id AND item_no = @<fs_item_RET>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_RET>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_RET>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_RET>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_RET>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_RET>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_RET>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_RET>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_RET>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_RET>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_RET>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_RET>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_RET>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_RET>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_RET>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_RET>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_RET>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_RET>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_RET>-%data-expdate.
                                IF <lv_notif_id_RET> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_RET>. ENDIF.
                                IF <r_rc_RET> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_RET>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_RET>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_RET>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_RET>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_RET>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -1731,31 +1675,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DISP> TO FIELD-SYMBOL(<r_rc_DISP>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DISP>).
-                             IF <fs_item_DISP>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_DISP>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_DISP>-gtin. lv_resp_gtin = <r_gtin_DISP>.
+                             lv_item_gtin = <fs_item_DISP>-%data-gtin. lv_resp_gtin = <r_gtin_DISP>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DISP>-batch = <r_bn_DISP>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DISP>-%data-batch = <r_bn_DISP>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_DISP>-tran_id AND item_no = @<fs_item_DISP>-item_no.
+                                 WHERE tran_id = @<fs_item_DISP>-%data-tran_id AND item_no = @<fs_item_DISP>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_DISP>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_DISP>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_DISP>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_DISP>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_DISP>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DISP>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DISP>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DISP>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_DISP>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_DISP>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_DISP>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_DISP>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_DISP>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_DISP>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_DISP>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_DISP>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DISP>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_DISP>-%data-expdate.
                                IF <lv_notif_id_DISP> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DISP>. ENDIF.
                                IF <r_rc_DISP> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DISP>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_DISP>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_DISP>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DISP>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DISP>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -1792,31 +1736,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DISP_CAN> TO FIELD-SYMBOL(<r_rc_DISP_CAN>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DISP_CAN>).
-                             IF <fs_item_DISP_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_DISP_CAN>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_DISP_CAN>-gtin. lv_resp_gtin = <r_gtin_DISP_CAN>.
+                             lv_item_gtin = <fs_item_DISP_CAN>-%data-gtin. lv_resp_gtin = <r_gtin_DISP_CAN>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DISP_CAN>-batch = <r_bn_DISP_CAN>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DISP_CAN>-%data-batch = <r_bn_DISP_CAN>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_DISP_CAN>-tran_id AND item_no = @<fs_item_DISP_CAN>-item_no.
+                                 WHERE tran_id = @<fs_item_DISP_CAN>-%data-tran_id AND item_no = @<fs_item_DISP_CAN>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_DISP_CAN>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_DISP_CAN>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_DISP_CAN>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_DISP_CAN>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_DISP_CAN>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DISP_CAN>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DISP_CAN>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DISP_CAN>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_DISP_CAN>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_DISP_CAN>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_DISP_CAN>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_DISP_CAN>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_DISP_CAN>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_DISP_CAN>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_DISP_CAN>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_DISP_CAN>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DISP_CAN>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_DISP_CAN>-%data-expdate.
                                IF <lv_notif_id_DISP_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DISP_CAN>. ENDIF.
                                IF <r_rc_DISP_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DISP_CAN>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_DISP_CAN>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_DISP_CAN>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DISP_CAN>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DISP_CAN>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -1853,31 +1797,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_TRAN> TO FIELD-SYMBOL(<r_rc_TRAN>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_TRAN>).
-                             IF <fs_item_TRAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_TRAN>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_TRAN>-gtin. lv_resp_gtin = <r_gtin_TRAN>.
+                             lv_item_gtin = <fs_item_TRAN>-%data-gtin. lv_resp_gtin = <r_gtin_TRAN>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_TRAN>-batch = <r_bn_TRAN>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_TRAN>-%data-batch = <r_bn_TRAN>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_TRAN>-tran_id AND item_no = @<fs_item_TRAN>-item_no.
+                                 WHERE tran_id = @<fs_item_TRAN>-%data-tran_id AND item_no = @<fs_item_TRAN>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_TRAN>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_TRAN>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_TRAN>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_TRAN>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_TRAN>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_TRAN>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_TRAN>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_TRAN>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_TRAN>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_TRAN>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_TRAN>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_TRAN>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_TRAN>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_TRAN>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_TRAN>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_TRAN>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_TRAN>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_TRAN>-%data-expdate.
                                IF <lv_notif_id_TRAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_TRAN>. ENDIF.
                                IF <r_rc_TRAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_TRAN>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_TRAN>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_TRAN>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_TRAN>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_TRAN>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -1914,31 +1858,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_TRAN_CAN> TO FIELD-SYMBOL(<r_rc_TRAN_CAN>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_TRAN_CAN>).
-                             IF <fs_item_TRAN_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_TRAN_CAN>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_TRAN_CAN>-gtin. lv_resp_gtin = <r_gtin_TRAN_CAN>.
+                             lv_item_gtin = <fs_item_TRAN_CAN>-%data-gtin. lv_resp_gtin = <r_gtin_TRAN_CAN>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_TRAN_CAN>-batch = <r_bn_TRAN_CAN>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_TRAN_CAN>-%data-batch = <r_bn_TRAN_CAN>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_TRAN_CAN>-tran_id AND item_no = @<fs_item_TRAN_CAN>-item_no.
+                                 WHERE tran_id = @<fs_item_TRAN_CAN>-%data-tran_id AND item_no = @<fs_item_TRAN_CAN>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_TRAN_CAN>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_TRAN_CAN>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_TRAN_CAN>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_TRAN_CAN>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_TRAN_CAN>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_TRAN_CAN>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_TRAN_CAN>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_TRAN_CAN>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_TRAN_CAN>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_TRAN_CAN>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_TRAN_CAN>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_TRAN_CAN>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_TRAN_CAN>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_TRAN_CAN>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_TRAN_CAN>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_TRAN_CAN>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_TRAN_CAN>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_TRAN_CAN>-%data-expdate.
                                IF <lv_notif_id_TRAN_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_TRAN_CAN>. ENDIF.
                                IF <r_rc_TRAN_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_TRAN_CAN>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_TRAN_CAN>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_TRAN_CAN>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_TRAN_CAN>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_TRAN_CAN>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -1975,31 +1919,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_CONS> TO FIELD-SYMBOL(<r_rc_CONS>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_CONS>).
-                             IF <fs_item_CONS>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_CONS>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_CONS>-gtin. lv_resp_gtin = <r_gtin_CONS>.
+                             lv_item_gtin = <fs_item_CONS>-%data-gtin. lv_resp_gtin = <r_gtin_CONS>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_CONS>-batch = <r_bn_CONS>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_CONS>-%data-batch = <r_bn_CONS>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_CONS>-tran_id AND item_no = @<fs_item_CONS>-item_no.
+                                 WHERE tran_id = @<fs_item_CONS>-%data-tran_id AND item_no = @<fs_item_CONS>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_CONS>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_CONS>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_CONS>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_CONS>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_CONS>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_CONS>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_CONS>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_CONS>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_CONS>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_CONS>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_CONS>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_CONS>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_CONS>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_CONS>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_CONS>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_CONS>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_CONS>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_CONS>-%data-expdate.
                                IF <lv_notif_id_CONS> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_CONS>. ENDIF.
                                IF <r_rc_CONS> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_CONS>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_CONS>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_CONS>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_CONS>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_CONS>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -2036,31 +1980,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_CONS_CAN> TO FIELD-SYMBOL(<r_rc_CONS_CAN>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_CONS_CAN>).
-                             IF <fs_item_CONS_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_CONS_CAN>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_CONS_CAN>-gtin. lv_resp_gtin = <r_gtin_CONS_CAN>.
+                             lv_item_gtin = <fs_item_CONS_CAN>-%data-gtin. lv_resp_gtin = <r_gtin_CONS_CAN>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_CONS_CAN>-batch = <r_bn_CONS_CAN>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_CONS_CAN>-%data-batch = <r_bn_CONS_CAN>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_CONS_CAN>-tran_id AND item_no = @<fs_item_CONS_CAN>-item_no.
+                                 WHERE tran_id = @<fs_item_CONS_CAN>-%data-tran_id AND item_no = @<fs_item_CONS_CAN>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_CONS_CAN>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_CONS_CAN>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_CONS_CAN>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_CONS_CAN>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_CONS_CAN>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_CONS_CAN>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_CONS_CAN>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_CONS_CAN>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_CONS_CAN>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_CONS_CAN>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_CONS_CAN>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_CONS_CAN>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_CONS_CAN>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_CONS_CAN>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_CONS_CAN>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_CONS_CAN>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_CONS_CAN>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_CONS_CAN>-%data-expdate.
                                IF <lv_notif_id_CONS_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_CONS_CAN>. ENDIF.
                                IF <r_rc_CONS_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_CONS_CAN>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_CONS_CAN>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_CONS_CAN>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_CONS_CAN>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_CONS_CAN>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -2097,31 +2041,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_SALE> TO FIELD-SYMBOL(<r_rc_SALE>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_SALE>).
-                             IF <fs_item_SALE>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_SALE>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_SALE>-gtin. lv_resp_gtin = <r_gtin_SALE>.
+                             lv_item_gtin = <fs_item_SALE>-%data-gtin. lv_resp_gtin = <r_gtin_SALE>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_SALE>-batch = <r_bn_SALE>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_SALE>-%data-batch = <r_bn_SALE>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_SALE>-tran_id AND item_no = @<fs_item_SALE>-item_no.
+                                 WHERE tran_id = @<fs_item_SALE>-%data-tran_id AND item_no = @<fs_item_SALE>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_SALE>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_SALE>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_SALE>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_SALE>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_SALE>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_SALE>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_SALE>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_SALE>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_SALE>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_SALE>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_SALE>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_SALE>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_SALE>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_SALE>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_SALE>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_SALE>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_SALE>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_SALE>-%data-expdate.
                                IF <lv_notif_id_SALE> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_SALE>. ENDIF.
                                IF <r_rc_SALE> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_SALE>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_SALE>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_SALE>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_SALE>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_SALE>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -2158,31 +2102,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_SALE_CAN> TO FIELD-SYMBOL(<r_rc_SALE_CAN>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_SALE_CAN>).
-                             IF <fs_item_SALE_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_SALE_CAN>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_SALE_CAN>-gtin. lv_resp_gtin = <r_gtin_SALE_CAN>.
+                             lv_item_gtin = <fs_item_SALE_CAN>-%data-gtin. lv_resp_gtin = <r_gtin_SALE_CAN>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_SALE_CAN>-batch = <r_bn_SALE_CAN>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_SALE_CAN>-%data-batch = <r_bn_SALE_CAN>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_SALE_CAN>-tran_id AND item_no = @<fs_item_SALE_CAN>-item_no.
+                                 WHERE tran_id = @<fs_item_SALE_CAN>-%data-tran_id AND item_no = @<fs_item_SALE_CAN>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_SALE_CAN>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_SALE_CAN>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_SALE_CAN>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_SALE_CAN>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_SALE_CAN>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_SALE_CAN>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_SALE_CAN>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_SALE_CAN>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_SALE_CAN>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_SALE_CAN>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_SALE_CAN>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_SALE_CAN>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_SALE_CAN>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_SALE_CAN>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_SALE_CAN>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_SALE_CAN>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_SALE_CAN>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_SALE_CAN>-%data-expdate.
                                IF <lv_notif_id_SALE_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_SALE_CAN>. ENDIF.
                                IF <r_rc_SALE_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_SALE_CAN>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_SALE_CAN>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_SALE_CAN>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_SALE_CAN>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_SALE_CAN>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -2219,31 +2163,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DEAC> TO FIELD-SYMBOL(<r_rc_DEAC>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DEAC>).
-                             IF <fs_item_DEAC>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_DEAC>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_DEAC>-gtin. lv_resp_gtin = <r_gtin_DEAC>.
+                             lv_item_gtin = <fs_item_DEAC>-%data-gtin. lv_resp_gtin = <r_gtin_DEAC>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DEAC>-batch = <r_bn_DEAC>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DEAC>-%data-batch = <r_bn_DEAC>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_DEAC>-tran_id AND item_no = @<fs_item_DEAC>-item_no.
+                                 WHERE tran_id = @<fs_item_DEAC>-%data-tran_id AND item_no = @<fs_item_DEAC>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_DEAC>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_DEAC>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_DEAC>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_DEAC>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_DEAC>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DEAC>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DEAC>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DEAC>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_DEAC>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_DEAC>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_DEAC>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_DEAC>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_DEAC>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_DEAC>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_DEAC>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_DEAC>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DEAC>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_DEAC>-%data-expdate.
                                IF <lv_notif_id_DEAC> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DEAC>. ENDIF.
                                IF <r_rc_DEAC> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DEAC>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_DEAC>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_DEAC>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DEAC>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DEAC>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -2280,31 +2224,31 @@ CLASS lhc_Item IMPLEMENTATION.
                            ASSIGN COMPONENT 'RC' OF STRUCTURE <ls_resp_prod_DEAC_CAN> TO FIELD-SYMBOL(<r_rc_DEAC_CAN>).
 
                            LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<fs_item_DEAC_CAN>).
-                             IF <fs_item_DEAC_CAN>-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
+                             IF <fs_item_DEAC_CAN>-%data-prodstat = 'SUCCESS'. CONTINUE. ENDIF.
 
-                             lv_item_gtin = <fs_item_DEAC_CAN>-gtin. lv_resp_gtin = <r_gtin_DEAC_CAN>.
+                             lv_item_gtin = <fs_item_DEAC_CAN>-%data-gtin. lv_resp_gtin = <r_gtin_DEAC_CAN>.
                              SHIFT lv_item_gtin LEFT DELETING LEADING '0'.
                              SHIFT lv_resp_gtin LEFT DELETING LEADING '0'.
 
-                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DEAC_CAN>-batch = <r_bn_DEAC_CAN>.
+                             IF lv_item_gtin = lv_resp_gtin AND <fs_item_DEAC_CAN>-%data-batch = <r_bn_DEAC_CAN>.
                                SELECT SINGLE * FROM zmm_sst_dtts_itm INTO CORRESPONDING FIELDS OF @ls_processed_dttsit2
-                                 WHERE tran_id = @<fs_item_DEAC_CAN>-tran_id AND item_no = @<fs_item_DEAC_CAN>-item_no.
+                                 WHERE tran_id = @<fs_item_DEAC_CAN>-%data-tran_id AND item_no = @<fs_item_DEAC_CAN>-%data-item_no.
 
                                ls_processed_dttsit2-mandt = sy-mandt.
-                               ls_processed_dttsit2-tran_id = <fs_item_DEAC_CAN>-tran_id.
-                               ls_processed_dttsit2-item_no = <fs_item_DEAC_CAN>-item_no.
-                               ls_processed_dttsit2-zeile = <fs_item_DEAC_CAN>-zeile.
-                               ls_processed_dttsit2-product = <fs_item_DEAC_CAN>-product.
+                               ls_processed_dttsit2-tran_id = <fs_item_DEAC_CAN>-%data-tran_id.
+                               ls_processed_dttsit2-item_no = <fs_item_DEAC_CAN>-%data-item_no.
+                               ls_processed_dttsit2-zeile = <fs_item_DEAC_CAN>-%data-zeile.
+                               ls_processed_dttsit2-product = <fs_item_DEAC_CAN>-%data-product.
                                ls_processed_dttsit2-prod_name = <fs_item_DEAC_CAN>-prod_name.
-                               ls_processed_dttsit2-prod_qty = <fs_item_DEAC_CAN>-prod_qty.
+                               ls_processed_dttsit2-prodqty = <fs_item_DEAC_CAN>-%data-prodqty.
                                ls_processed_dttsit2-prod_unit = <fs_item_DEAC_CAN>-prod_unit.
-                               ls_processed_dttsit2-gtin = <fs_item_DEAC_CAN>-gtin.
-                               ls_processed_dttsit2-batch = <fs_item_DEAC_CAN>-batch.
-                               ls_processed_dttsit2-exp_date = <fs_item_DEAC_CAN>-exp_date.
+                               ls_processed_dttsit2-gtin = <fs_item_DEAC_CAN>-%data-gtin.
+                               ls_processed_dttsit2-batch = <fs_item_DEAC_CAN>-%data-batch.
+                               ls_processed_dttsit2-expdate = <fs_item_DEAC_CAN>-%data-expdate.
                                IF <lv_notif_id_DEAC_CAN> IS ASSIGNED. ls_processed_dttsit2-notif_id = <lv_notif_id_DEAC_CAN>. ENDIF.
                                IF <r_rc_DEAC_CAN> IS ASSIGNED. ls_processed_dttsit2-tr_response = <r_rc_DEAC_CAN>. ENDIF.
-                               ls_processed_dttsit2-mat_doc = <fs_item_DEAC_CAN>-matdoc.
-                               ls_processed_dttsit2-mvt_type = <fs_item_DEAC_CAN>-mvttype.
+                               ls_processed_dttsit2-mat_doc = <fs_item_DEAC_CAN>-%data-matdoc.
+                               ls_processed_dttsit2-mvt_type = <fs_item_DEAC_CAN>-%data-mvttype.
                                IF lt_header IS NOT INITIAL.
                                  ls_processed_dttsit2-operation = lt_header[ 1 ]-operation.
                                  ls_processed_dttsit2-frm_gln = lt_header[ 1 ]-frm_gln.
@@ -2376,9 +2320,9 @@ CLASS lhc_Item IMPLEMENTATION.
                       item_no = lv_item_no
                       tran_id = CONV ztran_id( lv_ts )
                       gtin = ls_param-gtin
-                      prodqty = ls_param-prod_qty
+                      prodqty = ls_param-prodqty
                       batch = ls_param-batch
-                      expdate = ls_param-exp_date
+                      expdate = ls_param-expdate
                       prodstat = 'NEW'
                       createddate = sy-datum
                       createdtime = sy-uzeit
