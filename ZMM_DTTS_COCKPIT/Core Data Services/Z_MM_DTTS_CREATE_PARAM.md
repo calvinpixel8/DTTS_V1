@@ -8,6 +8,9 @@ define abstract entity Z_MM_DTTS_CREATE_PARAM
   to_gln       : abap.char(13);
   @EndUserText.label: 'Operation'
   operation    : abap.char(20);
+  @EndUserText.label: 'Movement Type'
+  mvt_type     : bwart;
+
   @EndUserText.label: 'GTIN'
   gtin         : z_dgtin;
   @EndUserText.label: 'Quantity'

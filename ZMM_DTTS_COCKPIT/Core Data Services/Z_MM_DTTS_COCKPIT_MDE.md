@@ -55,5 +55,9 @@ annotate view ZC_MM_DTTS_COCKPIT with
   @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
                        { position: 120, label: 'Material Document' }]
   matdoc;
+  @UI.hidden: true
+  doc_year;
+  @UI.hidden: true
+  fiscal_year;
 }
 ```

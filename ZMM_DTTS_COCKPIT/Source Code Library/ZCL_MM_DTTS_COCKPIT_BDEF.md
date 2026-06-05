@@ -9,7 +9,8 @@ ENDCLASS.
 CLASS lcl_buffer DEFINITION.
   PUBLIC SECTION.
     CLASS-DATA: mt_create TYPE TABLE OF zmm_sst_dttsit2,
-                mt_update TYPE TABLE OF zmm_sst_dttsit2.
+                mt_update TYPE TABLE OF zmm_sst_dttsit2,
+                mt_delete TYPE TABLE OF zmm_sst_dttsit2.
 ENDCLASS.
 CLASS lcl_buffer IMPLEMENTATION.
 ENDCLASS.
@@ -257,6 +258,19 @@ CLASS lhc_Item IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD delete.
+    LOOP AT keys INTO DATA(ls_key).
+      " Check tran_id prefix
+      SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_tran_id)
+        WHERE doc_year = @ls_key-doc_year AND matdoc = @ls_key-matdoc AND mvttype = @ls_key-mvttype AND item_no = @ls_key-item_no.
+
+      IF sy-subrc = 0 AND lv_tran_id(1) = '6'.
+        SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @DATA(ls_delete)
+          WHERE tran_id = @lv_tran_id AND item_no = @ls_key-item_no.
+        IF sy-subrc = 0.
+          APPEND ls_delete TO lcl_buffer=>mt_delete.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD read.
@@ -2299,30 +2313,51 @@ CLASS lhc_Item IMPLEMENTATION.
       DATA(ls_param) = ls_key-%param.
 
       DATA lv_doc_year TYPE mjahr.
-      DATA lv_matdoc TYPE mblnr.
-      DATA lv_mvttype TYPE bwart.
+      DATA lv_mat_doc TYPE mblnr.
+      DATA lv_mvt_type TYPE bwart.
       DATA lv_item_no TYPE numc4.
 
       lv_doc_year = sy-datum(4).
-      GET TIME STAMP FIELD DATA(lv_ts).
-      lv_mat_doc = CONV mblnr( lv_ts ).
-      lv_mvt_type = '101'.
 
-      CALL FUNCTION 'QF05_RANDOM_INTEGER'
-        EXPORTING ran_int_max = 9999 ran_int_min = 1
-        IMPORTING ran_int = DATA(lv_ran).
-      lv_item_no = CONV numc4( lv_ran ).
+      CALL FUNCTION 'NUMBER_GET_NEXT'
+        EXPORTING
+          nr_range_nr             = '01'
+          object                  = 'ZMMDDTSCRE'
+        IMPORTING
+          number                  = lv_mat_doc
+        EXCEPTIONS
+          interval_not_found      = 1
+          number_range_not_intern = 2
+          object_not_found        = 3
+          quantity_is_0           = 4
+          quantity_is_not_1       = 5
+          interval_overflow       = 6
+          buffer_overflow         = 7
+          OTHERS                  = 8.
+      IF sy-subrc <> 0.
+        " Fallback if number range fails
+        lv_mat_doc = '9999999999'.
+      ENDIF.
+
+      lv_mvt_type = ls_param-mvt_type.
+      lv_item_no = '0001'.
+
+      DATA lv_tran_id TYPE ztran_id.
+      lv_tran_id = |{ lv_mat_doc }{ lv_doc_year }{ lv_mvt_type }|.
 
       APPEND VALUE #( %cid = ls_key-%cid
                       doc_year = lv_doc_year
                       matdoc = lv_mat_doc
                       mvttype = lv_mvt_type
                       item_no = lv_item_no
-                      tran_id = CONV ztran_id( lv_ts )
+                      tran_id = lv_tran_id
                       gtin = ls_param-gtin
-                      prodqty = ls_param-prodqty
+                      prodqty = ls_param-prod_qty
                       batch = ls_param-batch
-                      expdate = ls_param-expdate
+                      expdate = ls_param-exp_date
+                      operation = ls_param-operation
+                      frm_gln = ls_param-frm_gln
+                      to_gln = ls_param-to_gln
                       prodstat = 'NEW'
                       createddate = sy-datum
                       createdtime = sy-uzeit
@@ -2331,7 +2366,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      CREATE FIELDS ( doc_year matdoc mvttype item_no tran_id gtin prodqty batch expdate prodstat createddate createdtime createdby )
+      CREATE FIELDS ( doc_year matdoc mvttype item_no tran_id gtin prodqty batch expdate operation frm_gln to_gln prodstat createddate createdtime createdby )
       WITH lt_create
       MAPPED DATA(ls_mapped)
       FAILED DATA(ls_failed)
@@ -2438,11 +2473,16 @@ CLASS lsc_ZR_MM_DTTS_COCKPIT IMPLEMENTATION.
      IF lcl_buffer=>mt_update IS NOT INITIAL.
        MODIFY zmm_sst_dttsit2 FROM TABLE lcl_buffer=>mt_update.
      ENDIF.
+
+     IF lcl_buffer=>mt_delete IS NOT INITIAL.
+       DELETE zmm_sst_dttsit2 FROM TABLE lcl_buffer=>mt_delete.
+     ENDIF.
   ENDMETHOD.
 
   METHOD cleanup.
      CLEAR lcl_buffer=>mt_create.
      CLEAR lcl_buffer=>mt_update.
+     CLEAR lcl_buffer=>mt_delete.
   ENDMETHOD.
 
   METHOD cleanup_finalize.
