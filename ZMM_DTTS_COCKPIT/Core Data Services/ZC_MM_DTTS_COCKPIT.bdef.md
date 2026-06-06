@@ -5,7 +5,7 @@ use draft;
 
 define behavior for ZC_MM_DTTS_COCKPIT alias Item
 {
-  use create;
+  //use create; " Disabled standard create to enforce popup creation
   use update;
   use delete;
 
