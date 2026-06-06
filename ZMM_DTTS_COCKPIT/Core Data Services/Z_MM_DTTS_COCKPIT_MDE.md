@@ -2,6 +2,7 @@
 @Metadata.layer: #CORE
 annotate view ZC_MM_DTTS_COCKPIT with
 {
+  @UI.createHidden: true
   @UI.facet: [ { id:              'Item',
                  purpose:         #STANDARD,
                  type:            #IDENTIFICATION_REFERENCE,
@@ -52,7 +53,8 @@ annotate view ZC_MM_DTTS_COCKPIT with
   notifid;
 
   @UI.selectionField: [ { position: 10 } ]
-  @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
+  @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'createWithPopup', label: 'Create' },
+                       { type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
                        { position: 120, label: 'Material Document' }]
   matdoc;
   @UI.hidden: true
