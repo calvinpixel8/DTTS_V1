@@ -136,7 +136,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     LOOP AT entities INTO DATA(ls_entity).
       SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_tran_id)
-        WHERE doc_year = @ls_entity-doc_year AND mat_doc = @ls_entity-matdoc AND mvt_type = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
+        WHERE doc_year = @ls_entity-doc_year AND matdoc = @ls_entity-matdoc AND mvttype = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
 
       IF sy-subrc = 0.
         SELECT SINGLE * FROM zmm_sst_dttsit2 INTO @DATA(ls_dttsit2)
@@ -144,7 +144,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
         IF sy-subrc <> 0.
           SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_base)
-            WHERE doc_year = @ls_entity-doc_year AND mat_doc = @ls_entity-matdoc AND mvt_type = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
+            WHERE doc_year = @ls_entity-doc_year AND matdoc = @ls_entity-matdoc AND mvttype = @ls_entity-mvttype AND item_no = @ls_entity-item_no.
 
           IF sy-subrc = 0.
             ls_dttsit2-mandt = sy-mandt.
@@ -170,7 +170,7 @@ CLASS lhc_Item IMPLEMENTATION.
             ls_dttsit2-trans_stat = ls_base-transstat.
 
             SELECT SINGLE operation, frm_gln, to_gln FROM zmm_sst_dtts_hdr INTO (@ls_dttsit2-operation, @ls_dttsit2-frm_gln, @ls_dttsit2-to_gln)
-              WHERE mat_doc = @ls_entity-matdoc AND doc_yr = @ls_entity-doc_year AND mvt_type = @ls_entity-mvttype.
+              WHERE matdoc = @ls_entity-matdoc AND doc_yr = @ls_entity-doc_year AND mvttype = @ls_entity-mvttype.
 
             APPEND ls_dttsit2 TO lcl_buffer=>mt_create.
           ENDIF.
@@ -221,7 +221,7 @@ CLASS lhc_Item IMPLEMENTATION.
     IF keys IS NOT INITIAL.
       SELECT * FROM zr_mm_dtts_cockpit
         FOR ALL ENTRIES IN @keys
-        WHERE doc_year = @keys-doc_year AND mat_doc = @keys-matdoc AND mvt_type = @keys-mvttype AND item_no = @keys-item_no
+        WHERE doc_year = @keys-doc_year AND matdoc = @keys-matdoc AND mvttype = @keys-mvttype AND item_no = @keys-item_no
         INTO CORRESPONDING FIELDS OF TABLE @lt_read_data.
 
       IF sy-subrc = 0.
@@ -378,7 +378,7 @@ CLASS lhc_Item IMPLEMENTATION.
         DATA ls_item_st TYPE tt_is_item.
 
         SELECT SINGLE tran_id FROM zr_mm_dtts_cockpit INTO @DATA(lv_t)
-          WHERE doc_year = @ls_k-doc_year AND mat_doc = @ls_k-matdoc AND mvt_type = @ls_k-mvttype AND item_no = @ls_k-item_no.
+          WHERE doc_year = @ls_k-doc_year AND matdoc = @ls_k-matdoc AND mvttype = @ls_k-mvttype AND item_no = @ls_k-item_no.
 
         READ TABLE lcl_buffer=>mt_create INTO DATA(ls_buf) WITH KEY tran_id = lv_t item_no = ls_k-item_no.
         IF sy-subrc = 0.
@@ -393,7 +393,7 @@ CLASS lhc_Item IMPLEMENTATION.
              APPEND ls_item_st TO lt_items.
            ELSE.
              SELECT SINGLE * FROM zr_mm_dtts_cockpit INTO @DATA(ls_db)
-               WHERE doc_year = @ls_k-doc_year AND mat_doc = @ls_k-matdoc AND mvt_type = @ls_k-mvttype AND item_no = @ls_k-item_no.
+               WHERE doc_year = @ls_k-doc_year AND matdoc = @ls_k-matdoc AND mvttype = @ls_k-mvttype AND item_no = @ls_k-item_no.
              IF sy-subrc = 0.
                ls_item_st = CORRESPONDING #( ls_db ).
                APPEND ls_item_st TO lt_items.
