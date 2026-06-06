@@ -198,63 +198,6 @@ CLASS lhc_Item IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    IF lt_keys_to_reprocess IS NOT INITIAL.
-       DATA lt_processed_updates TYPE tt_dttsit2.
-       me->execute_reprocess( EXPORTING it_keys = lt_keys_to_reprocess
-                              IMPORTING et_update_buffer = lt_processed_updates ).
-
-       LOOP AT lt_processed_updates INTO DATA(ls_proc).
-         READ TABLE lcl_buffer=>mt_update ASSIGNING FIELD-SYMBOL(<fs_buf>) WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
-         IF sy-subrc = 0.
-            <fs_buf>-zeile = ls_proc-zeile.
-            <fs_buf>-product = ls_proc-product.
-            <fs_buf>-prod_name = ls_proc-prod_name.
-            <fs_buf>-prodqty = ls_proc-prodqty.
-            <fs_buf>-prod_unit = ls_proc-prod_unit.
-            <fs_buf>-gtin = ls_proc-gtin.
-            <fs_buf>-batch = ls_proc-batch.
-            <fs_buf>-expdate = ls_proc-expdate.
-            <fs_buf>-notif_id = ls_proc-notif_id.
-            <fs_buf>-tr_response = ls_proc-tr_response.
-            <fs_buf>-mat_doc = ls_proc-mat_doc.
-            <fs_buf>-mvt_type = ls_proc-mvt_type.
-            <fs_buf>-operation = ls_proc-operation.
-            <fs_buf>-frm_gln = ls_proc-frm_gln.
-            <fs_buf>-to_gln = ls_proc-to_gln.
-            <fs_buf>-prod_stat = ls_proc-prod_stat.
-            <fs_buf>-trans_stat = ls_proc-trans_stat.
-            <fs_buf>-changed_date = ls_proc-changed_date.
-            <fs_buf>-changed_time = ls_proc-changed_time.
-            <fs_buf>-changed_by = ls_proc-changed_by.
-         ELSE.
-            READ TABLE lcl_buffer=>mt_create ASSIGNING <fs_create> WITH KEY tran_id = ls_proc-tran_id item_no = ls_proc-item_no.
-            IF sy-subrc = 0.
-               <fs_create>-zeile = ls_proc-zeile.
-               <fs_create>-product = ls_proc-product.
-               <fs_create>-prod_name = ls_proc-prod_name.
-               <fs_create>-prodqty = ls_proc-prodqty.
-               <fs_create>-prod_unit = ls_proc-prod_unit.
-               <fs_create>-gtin = ls_proc-gtin.
-               <fs_create>-batch = ls_proc-batch.
-               <fs_create>-expdate = ls_proc-expdate.
-               <fs_create>-notif_id = ls_proc-notif_id.
-               <fs_create>-tr_response = ls_proc-tr_response.
-               <fs_create>-mat_doc = ls_proc-mat_doc.
-               <fs_create>-mvt_type = ls_proc-mvt_type.
-               <fs_create>-operation = ls_proc-operation.
-               <fs_create>-frm_gln = ls_proc-frm_gln.
-               <fs_create>-to_gln = ls_proc-to_gln.
-               <fs_create>-prod_stat = ls_proc-prod_stat.
-               <fs_create>-trans_stat = ls_proc-trans_stat.
-               <fs_create>-changed_date = ls_proc-changed_date.
-               <fs_create>-changed_time = ls_proc-changed_time.
-               <fs_create>-changed_by = ls_proc-changed_by.
-            ELSE.
-               APPEND ls_proc TO lcl_buffer=>mt_update.
-            ENDIF.
-         ENDIF.
-       ENDLOOP.
-    ENDIF.
   ENDMETHOD.
 
   METHOD delete.
@@ -2353,6 +2296,7 @@ CLASS lhc_Item IMPLEMENTATION.
                       tran_id = lv_tran_id
                       gtin = ls_param-gtin
                       prodqty = ls_param-prod_qty
+                      produnit = ls_param-prod_unit
                       batch = ls_param-batch
                       expdate = ls_param-exp_date
                       operation = ls_param-operation
@@ -2366,7 +2310,7 @@ CLASS lhc_Item IMPLEMENTATION.
 
     MODIFY ENTITIES OF zr_mm_dtts_cockpit IN LOCAL MODE
       ENTITY Item
-      CREATE FIELDS ( doc_year matdoc mvttype item_no tran_id gtin prodqty batch expdate operation frm_gln to_gln prodstat createddate createdtime createdby )
+      CREATE FIELDS ( doc_year matdoc mvttype item_no tran_id gtin prodqty produnit batch expdate operation frm_gln to_gln prodstat createddate createdtime createdby )
       WITH lt_create
       MAPPED DATA(ls_mapped)
       FAILED DATA(ls_failed)
