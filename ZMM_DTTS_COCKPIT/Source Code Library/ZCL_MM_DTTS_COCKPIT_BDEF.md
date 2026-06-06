@@ -2316,7 +2316,17 @@ CLASS lhc_Item IMPLEMENTATION.
       FAILED DATA(ls_failed)
       REPORTED DATA(ls_reported).
 
-    mapped-item = ls_mapped-item.
+    " Do not map the result to prevent navigation to the object page
+    " mapped-item = ls_mapped-item.
+
+    " Add success message
+    LOOP AT lt_create INTO DATA(ls_create).
+      APPEND VALUE #( %cid = ls_create-%cid
+                      %msg = new_message( id       = 'ZMM_DTTS'
+                                          number   = '000'
+                                          severity = if_abap_behv_message=>severity-success
+                                          v1       = 'Data saved in table' ) ) TO reported-item.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD format_data.

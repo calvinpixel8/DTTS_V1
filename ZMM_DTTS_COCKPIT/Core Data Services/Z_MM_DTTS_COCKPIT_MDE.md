@@ -53,7 +53,7 @@ annotate view ZC_MM_DTTS_COCKPIT with
   notifid;
 
   @UI.selectionField: [ { position: 10 } ]
-  @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'createWithPopup', label: 'Create' },
+  @UI.lineItem:       [{ type: #FOR_ACTION, dataAction: 'createWithPopup', label: 'Create', invocationGrouping: #ISOLATED },
                        { type: #FOR_ACTION, dataAction: 'reprocess', label: 'Reprocess' },
                        { position: 120, label: 'Material Document' }]
   matdoc;

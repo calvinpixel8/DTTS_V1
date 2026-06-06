@@ -19,7 +19,7 @@ authorization master ( instance )
   action ( features : instance ) reprocess result [1] $self;
 
   // Factory action to create new records with parameters
-  factory action createWithPopup parameter Z_MM_DTTS_CREATE_PARAM [1];
+  static action createWithPopup parameter Z_MM_DTTS_CREATE_PARAM;
 
   draft action Edit;
   draft action Activate optimized;
